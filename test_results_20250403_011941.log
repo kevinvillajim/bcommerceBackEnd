@@ -1,0 +1,557 @@
+Iniciando pruebas del sistema BCommerce a 2025-04-03 01:19:41
+===============================================
+Ejecutando todas las pruebas unitarias...
+Ejecutando: php artisan test tests/Unit
+
+   PASS  Tests\Unit\ChatFilterServiceTest
+  ✓ it detects phone numbers                                                                                            0.75s
+  ✓ it detects number emojis                                                                                            0.03s
+  ✓ it registers strike for prohibited content                                                                          0.03s
+  ✓ it blocks seller after strike limit                                                                                 0.06s
+  ✓ it censors prohibited content                                                                                       0.03s
+  ✓ it provides correct reject reason                                                                                   0.03s
+
+   PASS  Tests\Unit\ComplexRecommendationSystemTest
+  ✓ it handles complete recommendation workflow                                                                         0.05s
+
+   PASS  Tests\Unit\Domain\Entities\CategoryEntityTest
+  ✓ it can be instantiated
+  ✓ it can be created from static method
+  ✓ it can be reconstituted
+  ✓ it updates timestamp when modified                                                                                  1.02s
+  ✓ it can add child categories
+  ✓ it can activate and deactivate
+  ✓ it can be featured and unfeatured
+  ✓ it can convert to array
+
+   PASS  Tests\Unit\Domain\Entities\ProductEntityTest
+  ✓ it can be instantiated
+  ✓ it can calculate final price with discount
+  ✓ it can determine if in stock
+  ✓ it can decrement stock
+  ✓ it can increment view count
+  ✓ it can increment sales count
+  ✓ it can convert to array
+
+   PASS  Tests\Unit\Infrastructure\Repositories\EloquentCategoryRepositoryTest
+  ✓ it can find a category by id                                                                                        0.03s
+  ✓ it returns null when category not found                                                                             0.03s
+  ✓ it can find a category by slug                                                                                      0.03s
+  ✓ it can find all categories                                                                                          0.03s
+  ✓ it can find featured categories                                                                                     0.03s
+  ✓ it can find main categories                                                                                         0.03s
+  ✓ it can find subcategories                                                                                           0.03s
+  ✓ it can save a new category                                                                                          0.03s
+  ✓ it can update an existing category                                                                                  0.03s
+  ✓ it can delete a category                                                                                            0.03s
+  ✓ it can count categories                                                                                             0.04s
+  ✓ it can create from array                                                                                            0.03s
+  ✓ it can update from array                                                                                            0.03s
+
+   PASS  Tests\Unit\Infrastructure\Repositories\EloquentProductRepositoryTest
+  ✓ it can create a product                                                                                             0.04s
+  ✓ it can find a product by id                                                                                         0.04s
+  ✓ it returns null when product not found                                                                              0.03s
+  ✓ it can find a product by slug                                                                                       0.03s
+  ✓ it can update a product                                                                                             0.04s
+  ✓ it dispatches events when updating product                                                                          0.04s
+  ✓ it can delete a product                                                                                             0.04s
+  ✓ it can increment view count                                                                                         0.03s
+  ✓ it can update stock                                                                                                 0.04s
+  ✓ it can find products by category                                                                                    0.04s
+  ✓ it can search products                                                                                              0.04s
+  ✓ it can find featured products                                                                                       0.05s
+  ✓ it can find products by tags                                                                                        0.04s
+  ✓ it can find popular products                                                                                        0.04s
+
+   PASS  Tests\Unit\Middleware\JwtMiddlewareTest
+  ✓ it rejects request from blocked user                                                                                0.05s
+  ✓ it allows request from non blocked user                                                                             0.03s
+
+   PASS  Tests\Unit\RecommendationServiceTest
+  ✓ it tracks user interaction                                                                                          0.03s
+  ✓ it gets user profile                                                                                                0.03s
+  ✓ it generates recommendations based on preferences                                                                   0.03s
+  ✓ it generates demographic profile                                                                                    0.03s
+  ✓ it enriches profile with demographic data when needed                                                               0.03s
+
+   PASS  Tests\Unit\SellerModelTest
+  ✓ it belongs to a user                                                                                                0.04s
+  ✓ it can calculate average rating                                                                                     0.04s
+  ✓ it calculates trustworthiness score                                                                                 0.04s
+  ✓ it becomes inactive when user is blocked                                                                            0.04s
+
+   PASS  Tests\Unit\SellerRepositoryTest
+  ✓ it can find seller by id                                                                                            0.04s
+  ✓ it can find seller by user id                                                                                       0.03s
+  ✓ it returns null for nonexistent seller                                                                              0.03s
+  ✓ it can create a seller                                                                                              0.03s
+  ✓ it can update a seller                                                                                              0.03s
+  ✓ it can get top sellers by rating                                                                                    0.05s
+  ✓ it can get featured sellers                                                                                         0.03s
+
+   PASS  Tests\Unit\Services\JwtServiceTest
+  ✓ it can generate token                                                                                               0.06s
+  ✓ it can get user from token                                                                                          0.03s
+  ✓ it can validate token                                                                                               0.04s
+  ✓ it returns false for invalid token                                                                                  0.04s
+  ✓ it can refresh token                                                                                                0.03s
+  ✓ it can invalidate token                                                                                             0.04s
+
+   WARN  Tests\Unit\Services\RecommendationServiceTest
+  ✓ it tracks user interaction                                                                                          0.03s
+  ✓ it gets user profile                                                                                                0.03s
+  ✓ it gets formatted user profile                                                                                      0.03s
+  ✓ it calls track user interaction from alias method                                                                   0.03s
+  ✓ it generates demographic profile                                                                                    0.03s
+  - it generates recommendations with empty profile → Esta prueba necesita ser actualizada para la nueva arquitectura   0.04s
+
+   PASS  Tests\Unit\ShoppingCartEntityTest
+  ✓ it creates cart with default values                                                                                 0.03s
+  ✓ it adds new item                                                                                                    0.03s
+  ✓ it updates quantity when adding existing product                                                                    0.03s
+  ✓ it removes item                                                                                                     0.03s
+  ✓ it updates item quantity                                                                                            0.03s
+  ✓ it empties cart                                                                                                     0.03s
+
+   PASS  Tests\Unit\ShoppingCartRepositoryTest
+  ✓ it creates a shopping cart                                                                                          0.04s
+  ✓ it adds item to cart                                                                                                0.04s
+  ✓ it removes item from cart                                                                                           0.03s
+  ✓ it updates item quantity                                                                                            0.03s
+  ✓ it finds cart by user id                                                                                            0.03s
+  ✓ it clears cart                                                                                                      0.03s
+
+   PASS  Tests\Unit\UseCases\Accounting\CancelInvoiceUseCaseTest
+  ✓ it cancels invoice and creates reverse transaction                                                                  0.03s
+  ✓ it throws exception if invoice not found                                                                            0.03s
+  ✓ it throws exception if invoice already cancelled                                                                    0.03s
+  ✓ it returns false if sri cancellation fails                                                                          0.03s
+
+   PASS  Tests\Unit\UseCases\Accounting\GenerateAccountingReportUseCaseTest
+  ✓ it generates balance sheet report                                                                                   0.03s
+  ✓ it generates income statement report                                                                                0.03s
+  ✓ it generates account ledger report                                                                                  0.03s
+
+   PASS  Tests\Unit\UseCases\Accounting\GenerateInvoiceUseCaseSpecialCasesTest
+  ✓ it handles order with multiple items                                                                                0.04s
+  ✓ it handles failed sri generation                                                                                    0.03s
+  ✓ it handles zero tax orders                                                                                          0.03s
+
+   PASS  Tests\Unit\UseCases\Accounting\GenerateInvoiceUseCaseTest
+  ✓ it returns existing invoice if already generated                                                                    0.03s
+  ✓ it generates new invoice with accounting transaction                                                                0.03s
+  ✓ it throws exception when order not found                                                                            0.03s
+
+   PASS  Tests\Unit\UseCases\Cart\AddItemToCartUseCaseTest
+  ✓ it adds product to existing cart                                                                                    0.03s
+  ✓ it creates cart if not exists                                                                                       0.03s
+  ✓ it throws exception if product not found                                                                            0.03s
+  ✓ it throws exception if insufficient stock                                                                           0.03s
+
+   PASS  Tests\Unit\UseCases\Chat\CreateChatUseCaseTest
+  ✓ it creates a chat
+
+   PASS  Tests\Unit\UseCases\Chat\SendMessageUseCaseTest
+  ✓ it sends a valid message
+  ✓ it rejects prohibited content
+
+   PASS  Tests\Unit\UseCases\Checkout\ProcessCheckoutUseCaseTest
+  ✓ it processes checkout successfully                                                                                  0.03s
+  ✓ it throws exception if cart is empty                                                                                0.03s
+  ✓ it throws exception if payment fails                                                                                0.03s
+
+   PASS  Tests\Unit\UseCases\Feedback\DiscountCodeUseCaseTest
+  ✓ generate discount code use case                                                                                     0.04s
+  ✓ apply discount code use case                                                                                        0.03s
+  ✓ invalid discount code returns error                                                                                 0.03s
+  ✓ expired discount code returns error                                                                                 0.03s
+
+   PASS  Tests\Unit\UseCases\Product\CreateProductUseCaseTest
+  ✓ it creates a product with basic data                                                                                0.04s
+
+   PASS  Tests\Unit\UseCases\Product\SearchProductsUseCaseTest
+  ✓ it searches products with term                                                                                      0.03s
+  ✓ it searches products with filters                                                                                   0.03s
+  ✓ it searches products by category                                                                                    0.03s
+  ✓ it searches products by tags                                                                                        0.03s
+
+   PASS  Tests\Unit\UseCases\Recommendation\GenerateRecommendationsUseCaseTest
+  ✓ it executes and returns recommendations                                                                             0.04s
+
+   PASS  Tests\Unit\UseCases\Recommendation\GetUserProfileUseCaseTest
+  ✓ it executes and formats user profile                                                                                0.03s
+
+   WARN  Tests\Unit\UseCases\Recommendation\TrackUserInteractionsUseCaseTest
+  ! it tracks user interaction → This test did not perform any assertions                                               0.04s
+
+   PASS  Tests\Unit\UseCases\User\LoginUserUseCaseTest
+  ✓ it returns token for valid credentials                                                                              0.04s
+  ✓ it returns null for invalid credentials                                                                             0.23s
+  ✓ it returns error for blocked user                                                                                   0.04s
+
+   PASS  Tests\Unit\UserProfileRepositoryTest
+  ✓ it saves user interaction                                                                                           0.04s
+  ✓ it retrieves user interactions                                                                                      0.04s
+  ✓ it builds user profile                                                                                              0.04s
+  ✓ it gets category preferences                                                                                        0.05s
+  ✓ it gets recent search terms                                                                                         0.05s
+  ✓ it gets viewed products                                                                                             0.11s
+
+  Tests:    1 risky, 1 skipped, 133 passed (491 assertions)
+  Duration: 6.48s
+
+===============================================
+Ejecutando pruebas de servicios...
+Ejecutando: php artisan test tests/Unit/Services
+
+   PASS  Tests\Unit\Services\JwtServiceTest
+  ✓ it can generate token                                                                                               0.84s
+  ✓ it can get user from token                                                                                          0.04s
+  ✓ it can validate token                                                                                               0.03s
+  ✓ it returns false for invalid token                                                                                  0.03s
+  ✓ it can refresh token                                                                                                0.03s
+  ✓ it can invalidate token                                                                                             0.04s
+
+   WARN  Tests\Unit\Services\RecommendationServiceTest
+  ✓ it tracks user interaction                                                                                          0.05s
+  ✓ it gets user profile                                                                                                0.03s
+  ✓ it gets formatted user profile                                                                                      0.03s
+  ✓ it calls track user interaction from alias method                                                                   0.03s
+  ✓ it generates demographic profile                                                                                    0.03s
+  - it generates recommendations with empty profile → Esta prueba necesita ser actualizada para la nueva arquitectura   0.04s
+
+  Tests:    1 skipped, 11 passed (28 assertions)
+  Duration: 1.42s
+
+===============================================
+Ejecutando prueba del servicio de recomendación...
+Ejecutando: php artisan test tests/Unit/Services/RecommendationServiceTest.php
+
+   WARN  Tests\Unit\Services\RecommendationServiceTest
+  ✓ it tracks user interaction                                                                                          0.76s
+  ✓ it gets user profile                                                                                                0.03s
+  ✓ it gets formatted user profile                                                                                      0.03s
+  ✓ it calls track user interaction from alias method                                                                   0.03s
+  ✓ it generates demographic profile                                                                                    0.04s
+  - it generates recommendations with empty profile → Esta prueba necesita ser actualizada para la nueva arquitectura   0.04s
+
+  Tests:    1 skipped, 5 passed (17 assertions)
+  Duration: 1.10s
+
+===============================================
+Ejecutando pruebas de casos de uso de recomendación...
+Ejecutando: php artisan test tests/Unit/UseCases/Recommendation
+
+   PASS  Tests\Unit\UseCases\Recommendation\GenerateRecommendationsUseCaseTest
+  ✓ it executes and returns recommendations                                                                             0.74s
+
+   PASS  Tests\Unit\UseCases\Recommendation\GetUserProfileUseCaseTest
+  ✓ it executes and formats user profile                                                                                0.03s
+
+   WARN  Tests\Unit\UseCases\Recommendation\TrackUserInteractionsUseCaseTest
+  ! it tracks user interaction → This test did not perform any assertions                                               0.05s
+
+  Tests:    1 risky, 2 passed (8 assertions)
+  Duration: 1.00s
+
+===============================================
+Ejecutando pruebas de middleware...
+Ejecutando: php artisan test tests/Unit/Middleware
+
+   PASS  Tests\Unit\Middleware\JwtMiddlewareTest
+  ✓ it rejects request from blocked user                                                                                0.74s
+  ✓ it allows request from non blocked user                                                                             0.03s
+
+  Tests:    2 passed (8 assertions)
+  Duration: 0.95s
+
+===============================================
+Ejecutando pruebas de característica...
+Ejecutando: php artisan test tests/Feature
+
+   PASS  Tests\Feature\AdicionalChatRepositoryTest
+  ✓ it gets chat by id                                                                                                  0.75s
+  ✓ it returns null when chat not found                                                                                 0.04s
+  ✓ it gets chats by user id                                                                                            0.04s
+  ✓ it gets chats by seller id                                                                                          0.04s
+  ✓ it gets messages with pagination                                                                                    0.04s
+  ✓ it updates chat timestamp when adding message                                                                       1.05s
+  ✓ it handles empty message list                                                                                       0.04s
+  ✓ it returns empty array for nonexistent chats                                                                        0.03s
+
+   PASS  Tests\Feature\AdminNotificationTest
+  ✓ it notifies admin of new feedback                                                                                   0.05s
+  ✓ it notifies admin of seller strike                                                                                  0.04s
+  ✓ it notifies admin of low rating                                                                                     0.04s
+  ✓ it notifies admin of seller rank change                                                                             0.05s
+  ✓ it notifies admin of shipping delay                                                                                 0.05s
+  ✓ it notifies admin of out of stock product                                                                           0.04s
+  ✓ it blocks seller and notifies admin after three strikes                                                             0.06s
+  ✓ it can mark admin notifications as read                                                                             0.04s
+  ✓ it can test admin api endpoints                                                                                     0.12s
+  ✓ it sends daily sales notifications to admins                                                                        0.04s
+
+   PASS  Tests\Feature\AdminTest
+  ✓ it allows admins to view dashboard                                                                                  0.05s
+  ✓ it prevents regular users from accessing admin routes                                                               0.04s
+  ✓ it allows admins to list sellers                                                                                    0.05s
+  ✓ it allows admins to update seller status                                                                            0.06s
+  ✓ it allows admins to create sellers                                                                                  0.05s
+  ✓ it allows admins to update seller details                                                                           0.05s
+  ✓ it allows admins to moderate ratings                                                                                0.05s
+  ✓ it allows admins to list pending ratings                                                                            0.06s
+  ✓ it allows super admin to add new admin                                                                              0.04s
+  ✓ it prevents non super admin from managing admins                                                                    0.04s
+  ✓ it allows super admin to remove admin                                                                               0.05s
+  ✓ it prevents removing super admin by regular admin                                                                   0.06s
+  ✓ it allows super admin to list all admins                                                                            0.05s
+
+   PASS  Tests\Feature\AuthTest
+  ✓ it can login with valid credentials                                                                                 0.05s
+  ✓ it cannot login with invalid credentials                                                                            0.03s
+  ✓ it cannot access protected routes without token                                                                     0.03s
+  ✓ it can get authenticated user with token                                                                            0.04s
+  ✓ it can refresh token                                                                                                0.04s
+  ✓ it can logout                                                                                                       0.05s
+  ✓ it blocks access for blocked user                                                                                   0.04s
+
+   PASS  Tests\Feature\Auth\AuthControllerTest
+  ✓ user can login successfully                                                                                         0.04s
+  ✓ user cannot login with invalid credentials                                                                          0.03s
+  ✓ blocked user cannot login                                                                                           0.04s
+  ✓ authenticated user can get profile                                                                                  0.04s
+  ✓ authenticated user can logout                                                                                       0.04s
+  ✓ authenticated user can refresh token                                                                                0.04s
+
+   PASS  Tests\Feature\Auth\EmailVerificationTest
+  ✓ email can be verified                                                                                               0.04s
+  ✓ email is not verified with invalid hash                                                                             0.04s
+
+   PASS  Tests\Feature\Auth\PasswordResetTest
+  ✓ reset password link generates token                                                                                 0.04s
+  ✓ can reset password with valid token                                                                                 0.05s
+  ✓ cannot reset password with invalid token                                                                            0.04s
+  ✓ token validation works correctly                                                                                    0.03s
+
+   PASS  Tests\Feature\Auth\RegistrationTest
+  ✓ new users can register                                                                                              0.04s
+
+   PASS  Tests\Feature\CategoryTest
+  ✓ admin can create a category                                                                                         0.05s
+  ✓ regular user cannot create category                                                                                 0.04s
+  ✓ admin can update a category                                                                                         0.05s
+  ✓ admin can delete a category without products or subcategories                                                       0.04s
+  ✓ cannot delete category with products                                                                                0.04s
+  ✓ guests can view categories                                                                                          0.04s
+  ✓ guests can view category details                                                                                    0.04s
+  ✓ guests can view category by slug                                                                                    0.05s
+  ✓ guests can view main categories                                                                                     0.05s
+  ✓ guests can view subcategories                                                                                       0.04s
+
+   PASS  Tests\Feature\ChatRepositoryTest
+  ✓ it creates a chat                                                                                                   0.04s
+  ✓ it adds a message to chat                                                                                           0.03s
+  ✓ it retrieves messages for chat                                                                                      0.03s
+  ✓ it marks messages as read                                                                                           0.04s
+
+   PASS  Tests\Feature\FavoriteTest
+  ✓ user can toggle favorite status                                                                                     0.06s
+  ✓ user can retrieve favorites                                                                                         0.05s
+  ✓ user can check if product is favorited                                                                              0.04s
+  ✓ user can update notification preferences                                                                            0.05s
+  ✓ user receives notification when favorited product price changes                                                     0.04s
+  ✓ user receives notification when favorited product stock is low                                                      0.04s
+
+   PASS  Tests\Feature\FeedbackControllerTest
+  ✓ user can create feedback                                                                                            0.05s
+  ✓ user can view their own feedback                                                                                    0.04s
+  ✓ user cannot view other user feedback                                                                                0.04s
+  ✓ admin can view all feedback                                                                                         0.04s
+  ✓ seller created with seller id in feedback                                                                           0.05s
+  ✓ feedback validation                                                                                                 0.05s
+
+   PASS  Tests\Feature\FeedbackSystemTest
+  ✓ complete user feedback and discount flow                                                                            0.09s
+  ✓ seller feedback flow                                                                                                0.06s
+  ✓ admin can view pending feedbacks                                                                                    0.05s
+  ✓ user cannot review feedback                                                                                         0.05s
+
+   PASS  Tests\Feature\ProductControllerTest
+  ✓ it lists products                                                                                                   0.05s
+  ✓ it shows product details                                                                                            0.04s
+
+   PASS  Tests\Feature\ProductRepositoryTest
+  ✓ it creates a product                                                                                                0.03s
+  ✓ it finds product by id                                                                                              0.03s
+  ✓ it finds product by slug                                                                                            0.03s
+  ✓ it updates a product                                                                                                0.04s
+  ✓ it deletes a product                                                                                                0.03s
+  ✓ it finds products by category                                                                                       0.05s
+  ✓ it searches products                                                                                                0.04s
+  ✓ it finds products by tags                                                                                           0.04s
+  ✓ it increments view count                                                                                            0.04s
+  ✓ it updates stock                                                                                                    0.04s
+
+   PASS  Tests\Feature\ProductSearchIntegrationTest
+  ✓ it searches products by name                                                                                        0.05s
+  ✓ it searches products by description                                                                                 0.05s
+  ✓ it filters products by category                                                                                     0.04s
+  ✓ it combines search with category filter                                                                             0.05s
+  ✓ it tracks search interaction                                                                                        0.05s
+  ✓ it gets recommendations after search                                                                                0.06s
+
+   PASS  Tests\Feature\RatingSystemTest
+  ✓ middleware configuration                                                                                            0.05s
+  ✓ it allows buyers to rate sellers                                                                                    0.04s
+  ✓ it allows buyers to rate products                                                                                   0.04s
+  ✓ it allows sellers to rate buyers                                                                                    0.04s
+  ✓ it prevents duplicate ratings                                                                                       0.04s
+  ✓ it retrieves ratings for seller                                                                                     0.05s
+  ✓ it retrieves ratings for product                                                                                    0.04s
+  ✓ it retrieves user given ratings                                                                                     0.04s
+  ✓ it retrieves seller received ratings                                                                                0.04s
+
+   PASS  Tests\Feature\RecommendationSystemTest
+  ✓ it tracks and retrieves user interactions                                                                           0.05s
+  ✓ it generates recommendations based on interactions                                                                  0.05s
+  ✓ it retrieves user profile with interests                                                                            0.04s
+  ✓ it handles api calls for recommendations                                                                            0.05s
+  ✓ it tracks api interactions                                                                                          0.04s
+  ✓ it retrieves user profile via api                                                                                   0.05s
+
+   PASS  Tests\Feature\SellerNotificationTest
+  ✓ it notifies seller of new message                                                                                   0.05s
+  ✓ it notifies seller of new order                                                                                     0.04s
+  ✓ it notifies seller of feedback response                                                                             0.04s
+  ✓ it notifies seller of low stock                                                                                     0.04s
+  ✓ it notifies seller of shipping delay                                                                                0.04s
+  ✓ it notifies seller of strike                                                                                        0.05s
+  ✓ it notifies seller of account block                                                                                 0.04s
+  ✓ it notifies seller when rated by customer                                                                           0.04s
+  ✓ it blocks seller after three strikes                                                                                0.05s
+  ✓ it can test api endpoints                                                                                           0.05s
+
+   PASS  Tests\Feature\SellerTest
+  ✓ it allows admin to create sellers                                                                                   0.04s
+  ✓ it allows active sellers to access seller routes                                                                    0.04s
+  ✓ it prevents existing sellers from registering again                                                                 0.04s
+  ✓ it prevents non sellers from accessing seller routes                                                                0.04s
+  ✓ it can get top sellers by rating                                                                                    0.04s
+  ✓ it updates seller status to inactive when user is blocked                                                           0.04s
+  ✓ it prevents admin from creating duplicate seller accounts                                                           0.05s
+
+   PASS  Tests\Feature\ShippingExternalUpdateTest
+  ✓ it accepts external updates with valid api key                                                                      0.04s
+  ✓ it rejects external updates with invalid api key                                                                    0.04s
+  ✓ it rejects external updates with invalid status                                                                     0.04s
+  ✓ it rejects external updates to nonexistent shipping                                                                 0.04s
+  ✓ it rejects external updates to final state shipping                                                                 0.04s
+  ✓ it accepts update from delivered to returned                                                                        0.04s
+
+   PASS  Tests\Feature\ShippingHistoryTest
+  ✓ it debugs shipping history entries                                                                                  0.05s
+  ✓ it checks shipping history model relationship                                                                       0.05s
+
+   PASS  Tests\Feature\ShippingTrackerTest
+  ✓ it can get shipping tracking info                                                                                   0.05s
+  ✓ it can get shipping history                                                                                         0.05s
+  ✓ it rejects invalid tracking numbers                                                                                 0.04s
+  ✓ it can get shipping route                                                                                           0.05s
+
+   PASS  Tests\Feature\ShippingTrackingFlowTest
+  ✓ it gets shipping tracking details                                                                                   0.05s
+  ✓ it updates shipping status through external api                                                                     0.04s
+  ✓ it completes full shipping lifecycle                                                                                0.06s
+
+   PASS  Tests\Feature\ShoppingCartFlowTest
+  ✓ it completes cart operations flow                                                                                   0.09s
+  ✓ it can checkout and convert to order                                                                                0.09s
+
+   PASS  Tests\Feature\SimpleShippingTest
+  ✓ it can create shipping record                                                                                       0.04s
+  ✓ it can update shipping status                                                                                       0.04s
+
+   PASS  Tests\Feature\SimplifiedFeedbackTest
+  ✓ simplified feedback flow                                                                                            0.05s
+
+   PASS  Tests\Feature\UserNotificationTest
+  ✓ it can create a notification                                                                                        0.04s
+  ✓ it creates notification when order status changes                                                                   0.04s
+  ✓ it creates notification when feedback is reviewed                                                                   0.04s
+  ✓ it creates notification when new message is received                                                                0.04s
+  ✓ it creates notification when product price changes                                                                  0.04s
+  ✓ it creates notification when shipping status changes                                                                0.04s
+  ✓ it creates notification when user receives rating                                                                   0.04s
+  ✓ it can mark notification as read                                                                                    0.04s
+  ✓ it can mark all notifications as read                                                                               0.04s
+  ✓ it can count unread notifications                                                                                   0.04s
+  ✓ it can delete a notification                                                                                        0.04s
+  ✓ it can test api endpoints                                                                                           0.06s
+
+  Tests:    163 passed (827 assertions)
+  Duration: 9.55s
+
+===============================================
+Ejecutando prueba del repositorio de productos...
+Ejecutando: php artisan test tests/Feature/ProductRepositoryTest.php
+
+   PASS  Tests\Feature\ProductRepositoryTest
+  ✓ it creates a product                                                                                                0.73s
+  ✓ it finds product by id                                                                                              0.04s
+  ✓ it finds product by slug                                                                                            0.03s
+  ✓ it updates a product                                                                                                0.04s
+  ✓ it deletes a product                                                                                                0.03s
+  ✓ it finds products by category                                                                                       0.04s
+  ✓ it searches products                                                                                                0.04s
+  ✓ it finds products by tags                                                                                           0.04s
+  ✓ it increments view count                                                                                            0.04s
+  ✓ it updates stock                                                                                                    0.04s
+
+  Tests:    10 passed (36 assertions)
+  Duration: 1.24s
+
+===============================================
+Ejecutando prueba del repositorio de chat...
+Ejecutando: php artisan test tests/Feature/ChatRepositoryTest.php
+
+   PASS  Tests\Feature\ChatRepositoryTest
+  ✓ it creates a chat                                                                                                   0.81s
+  ✓ it adds a message to chat                                                                                           0.04s
+  ✓ it retrieves messages for chat                                                                                      0.04s
+  ✓ it marks messages as read                                                                                           0.04s
+
+  Tests:    4 passed (17 assertions)
+  Duration: 1.07s
+
+===============================================
+Ejecutando pruebas de autenticación...
+Ejecutando: php artisan test tests/Feature/Auth
+
+   PASS  Tests\Feature\Auth\AuthControllerTest
+  ✓ user can login successfully                                                                                         0.88s
+  ✓ user cannot login with invalid credentials                                                                          0.03s
+  ✓ blocked user cannot login                                                                                           0.03s
+  ✓ authenticated user can get profile                                                                                  0.04s
+  ✓ authenticated user can logout                                                                                       0.04s
+  ✓ authenticated user can refresh token                                                                                0.04s
+
+   PASS  Tests\Feature\Auth\EmailVerificationTest
+  ✓ email can be verified                                                                                               0.04s
+  ✓ email is not verified with invalid hash                                                                             0.04s
+
+   PASS  Tests\Feature\Auth\PasswordResetTest
+  ✓ reset password link generates token                                                                                 0.04s
+  ✓ can reset password with valid token                                                                                 0.04s
+  ✓ cannot reset password with invalid token                                                                            0.04s
+  ✓ token validation works correctly                                                                                    0.04s
+
+   PASS  Tests\Feature\Auth\RegistrationTest
+  ✓ new users can register                                                                                              0.05s
+
+  Tests:    13 passed (42 assertions)
+  Duration: 1.53s
+
+===============================================
+Todas las pruebas han sido ejecutadas y los resultados se han guardado en test_results_20250403_011941.log
+Para ver un informe detallado, ejecuta: php artisan test --coverage

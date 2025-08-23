@@ -1,0 +1,22 @@
+includes:
+  - ./vendor/larastan/larastan/extension.neon
+
+parameters:
+  level: 4
+  paths:
+    - app
+  excludePaths:
+    - app/Console/Kernel.php (?)
+    - app/Http/Kernel.php (?)
+    - app/Exceptions/Handler.php (?)
+  ignoreErrors:
+    # Ignore mixed return types from Laravel facades
+    - '#Call to an undefined method Illuminate\\.*#'
+    # Ignore dynamic property access patterns
+    - '#Access to an undefined property#'
+    # Ignore Laravel model magic properties
+    - '#Property .* does not exist#'
+    # Ignore Laravel collection methods
+    - '#Method .* invoked with .* parameters, .* required#'
+  checkMissingIterableValueType: false
+  checkGenericClassInNonGenericObjectType: false

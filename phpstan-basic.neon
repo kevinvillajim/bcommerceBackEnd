@@ -1,0 +1,23 @@
+parameters:
+  level: 3
+  paths:
+    - app
+  bootstrapFiles:
+    - vendor/autoload.php
+  excludePaths:
+    - app/Console/Kernel.php (?)
+    - app/Http/Kernel.php (?)
+    - app/Exceptions/Handler.php (?)
+  ignoreErrors:
+    # Ignore Eloquent static method calls (Laravel magic methods)
+    - '#Call to an undefined static method App\\Models\\.*::(where|find|create|count|all|get|first|orderBy|select|with|has|whereHas|whereIn|whereNotIn|whereNull|whereNotNull|whereBetween|whereDate|whereTime|whereYear|whereMonth|whereDay|whereColumn|whereExists|whereNotExists|whereJsonContains|whereJsonLength|orWhere|pluck|sum|avg|min|max|exists|doesntExist|chunk|each|cursor|lazy|take|skip|limit|offset|groupBy|having|distinct|join|leftJoin|rightJoin|crossJoin|union|unionAll|lock|sharedLock|toSql|explain|dd|dump)\(\)#'
+    
+    # Ignore Eloquent model properties (Laravel magic properties)
+    - '#Access to an undefined property App\\Models\\.*::\$.*#'
+    - '#Access to an undefined property Illuminate\\Database\\Eloquent\\Model::\$.*#'
+    
+    # Ignore collection return type issues  
+    - '#Method .* should return .* but returns .*Collection.*#'
+    
+    # Ignore Variable in empty() always exists
+    - '#Variable .* in empty\(\) always exists and is not falsy#'
