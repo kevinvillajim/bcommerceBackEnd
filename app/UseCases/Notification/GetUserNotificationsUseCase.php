@@ -93,6 +93,11 @@ class GetUserNotificationsUseCase
                     ? "/ratings/received/{$data['rating_id']}"
                     : null;
 
+            case Notification::TYPE_SELLER_STATUS_WARNING:
+            case Notification::TYPE_SELLER_SUSPENDED:
+            case Notification::TYPE_SELLER_INACTIVE:
+                return '/seller/dashboard';
+
             default:
                 return null;
         }

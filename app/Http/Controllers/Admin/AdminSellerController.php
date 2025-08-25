@@ -222,14 +222,10 @@ class AdminSellerController extends Controller
                 'status_updated_at' => now(),
             ]);
             
-            // If suspending or deactivating, also block the user account
-            if (in_array($request->status, ['suspended', 'inactive'])) {
-                $seller->update(['is_blocked' => true]);
-            } 
-            // If activating, unblock the user account
-            elseif ($request->status === 'active') {
-                $seller->update(['is_blocked' => false]);
-            }
+            // NOTA: El estado del seller (tienda) es independiente del bloqueo del usuario
+            // - seller->status: Controla el acceso a funciones de venta y visibilidad de productos
+            // - user->is_blocked: Controla el acceso completo del usuario a la plataforma
+            // Los admins pueden gestionar estos dos estados por separado
 
             return response()->json([
                 'success' => true,

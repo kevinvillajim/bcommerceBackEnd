@@ -133,6 +133,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
             $query = Product::whereIn('category_id', $categoryIds)
                 ->where('status', 'active')
                 ->where('published', true)
+                ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+                ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
                 ->with('category'); // ✅ EAGER LOADING para evitar N+1
 
             if (! empty($excludeIds)) {
@@ -162,6 +164,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
             $query = Product::where('category_id', $categoryId)
                 ->where('status', 'active')
                 ->where('published', true)
+                ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+                ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
                 ->with('category'); // ✅ EAGER LOADING para evitar N+1
 
             if (! empty($excludeIds)) {
@@ -235,7 +239,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
             ->where('products.published', true)
             ->where('products.status', 'active')
             ->with('category') // ✅ SIEMPRE cargar relación de categoría para evitar N+1
-            ->leftJoin('sellers', 'products.user_id', '=', 'sellers.user_id'); // ✅ Join para acceder a sellers
+            ->join('sellers', 'products.user_id', '=', 'sellers.user_id') // ✅ INNER JOIN para requerir seller
+            ->where('sellers.status', 'active'); // ✅ Solo vendedores ACTIVOS en tienda pública
 
         // ✅ NUEVA FUNCIONALIDAD: Join opcional con ratings para productos sin rating calculado
         if (! empty($filters['calculate_ratings_from_table'])) {
@@ -384,7 +389,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
     {
         $products = Product::where('products.published', true)
             ->where('products.status', 'active')
-            ->leftJoin('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
             ->select('products.*')
             ->with('category') // ✅ EAGER LOADING para evitar N+1
             ->orderBy('products.featured', 'desc') // Productos destacados primero
@@ -448,7 +454,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
         })
             ->where('products.published', true)
             ->where('products.status', 'active')
-            ->leftJoin('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
             ->select('products.*')
             ->with('category') // ✅ EAGER LOADING para evitar N+1
             ->orderBy('products.featured', 'desc') // Productos featured tienen prioridad absoluta
@@ -640,6 +647,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
             ->where('published', true)
             ->where('status', 'active')
             ->where('stock', '>', 0)
+            ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
             ->with('category') // ✅ EAGER LOADING para evitar N+1
             ->orderBy('rating', 'desc')
             ->orderBy('view_count', 'desc')
@@ -655,6 +664,8 @@ class EloquentProductRepository implements ProductRepositoryInterface
         $query = Product::whereNotIn('id', $excludeIds)
             ->where('published', true)
             ->where('status', 'active')
+            ->join('sellers', 'products.user_id', '=', 'sellers.user_id')
+            ->where('sellers.status', 'active') // ✅ Solo vendedores ACTIVOS
             ->with('category') // ✅ EAGER LOADING para evitar N+1
             ->where(function ($q) use ($term) {
                 $q->where('name', 'like', "%{$term}%")

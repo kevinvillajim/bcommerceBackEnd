@@ -443,11 +443,37 @@ class SellerController extends Controller
                     ];
                 });
 
+            // Para vendedores INACTIVOS, mostrar todo en ceros (datos se ocultan, no se borran)
+            if ($seller->status === 'inactive') {
+                return response()->json([
+                    'status' => 'success',
+                    'data' => [
+                        'seller_status' => $seller->status,
+                        'is_suspended' => true,
+                        'is_inactive' => true,
+                        'status_reason' => $seller->status_reason,
+                        'stats' => [
+                            'total_sales' => 0.0,
+                            'total_orders' => 0,
+                            'active_products' => 0,
+                            'total_products' => 0,
+                            'average_rating' => 0.0,
+                            'pending_orders' => 0,
+                        ],
+                        'recent_orders' => [],
+                        'top_products' => [],
+                    ],
+                ]);
+            }
+
+            // Para vendedores ACTIVOS y SUSPENDIDOS, mostrar datos reales
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'seller_status' => $seller->status, // Agregar status del vendedor
                     'is_suspended' => in_array($seller->status, ['suspended', 'inactive']),
+                    'is_inactive' => $seller->status === 'inactive',
+                    'status_reason' => $seller->status_reason ?? null,
                     'stats' => [
                         'total_sales' => (float) $totalSales,
                         'total_orders' => $totalOrders,

@@ -63,6 +63,12 @@ class Notification extends Model
 
     public const TYPE_SELLER_APPLICATION_REJECTED = 'seller_application_rejected';
 
+    public const TYPE_SELLER_STATUS_WARNING = 'seller_status_warning';
+
+    public const TYPE_SELLER_SUSPENDED = 'seller_suspended';
+
+    public const TYPE_SELLER_INACTIVE = 'seller_inactive';
+
     /**
      * Constantes para definir los diferentes tipos de notificación para vendedores
      */
@@ -201,6 +207,11 @@ class Notification extends Model
 
             case self::TYPE_SELLER_APPLICATION_REJECTED:
                 return '/profile?tab=seller-application';
+
+            case self::TYPE_SELLER_STATUS_WARNING:
+            case self::TYPE_SELLER_SUSPENDED:
+            case self::TYPE_SELLER_INACTIVE:
+                return '/seller/dashboard';
 
             default:
                 return null;
