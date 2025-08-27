@@ -70,18 +70,24 @@ class SellerMiddleware
         // Si no es una ruta de solo lectura y el vendedor no está activo, denegar acceso
         if (!$isReadOnlyRoute && $seller->status !== 'active') {
             $statusMessages = [
-                'pending' => 'Tu cuenta de vendedor está pendiente de aprobación',
-                'inactive' => 'Tu cuenta de vendedor está inactiva',
-                'suspended' => 'Tu cuenta de vendedor está suspendida',
+                'pending' => 'Tu cuenta de vendedor está pendiente de aprobación. No puedes realizar operaciones de venta.',
+                'inactive' => 'Tu cuenta de vendedor está inactiva. Contacta al administrador.',
+                'suspended' => 'Tu cuenta de vendedor está suspendida. No puedes realizar operaciones de venta.',
                 'rejected' => 'Tu solicitud de vendedor ha sido rechazada',
             ];
 
             $message = $statusMessages[$seller->status] ?? 'Tu cuenta de vendedor no está disponible';
+            
+            // Agregar razón si existe
+            if ($seller->status_reason) {
+                $message .= ' Motivo: ' . $seller->status_reason;
+            }
 
             return response()->json([
                 'status' => 'error',
                 'message' => $message,
                 'seller_status' => $seller->status,
+                'status_reason' => $seller->status_reason ?? null,
             ], 403);
         }
         
