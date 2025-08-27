@@ -3,7 +3,8 @@ deployment:
   tasks:
     # Variables de rutas
     - export REPOPATH=/home/capacit3/repositories/bcommerceBackEnd
-    - export DEPLOYPATH=/home/capacit3/public_html/api
+    # DEPLOYPATH es el mismo public/ del repositorio (no copiar a otra parte)
+    - export DEPLOYPATH=$REPOPATH/public
     
     # Ir al directorio del repositorio
     - cd $REPOPATH
@@ -54,15 +55,12 @@ deployment:
     - php $REPOPATH/artisan config:cache
     - php $REPOPATH/artisan route:cache
     
-    # 🌐 DEPLOYMENT A DIRECTORIO WEB
-    - mkdir -p $DEPLOYPATH
+    # 🌐 AJUSTAR PERMISOS DEL DIRECTORIO PÚBLICO (no copiar, usar directo)
+    # Los archivos ya están en $REPOPATH/public/ y el dominio apunta ahí
     
-    # Copiar archivos públicos de Laravel (incluyendo .htaccess que ya está en Git)
-    - /bin/cp -R $REPOPATH/public/* $DEPLOYPATH/
-    
-    # Permisos finales
+    # Permisos correctos para el directorio público
     - chmod -R 755 $DEPLOYPATH
-    - chmod 644 $DEPLOYPATH/.htaccess
+    - chmod 644 $DEPLOYPATH/.htaccess 2>/dev/null || true
     
     # 📊 VERIFICACIÓN FINAL (logs para debugging)
     - echo "✅ Deployment completed at $(date)"
