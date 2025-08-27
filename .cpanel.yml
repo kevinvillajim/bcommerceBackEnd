@@ -21,7 +21,7 @@ deployment:
       fi
     
     # Instalar/actualizar dependencias de Composer (sin dev dependencies)
-    - composer install --no-dev --optimize-autoloader --no-interaction
+    - /opt/cpanel/composer/bin/composer install --no-dev --optimize-autoloader --no-interaction
     
     # 🔒 PROTEGER STORAGE: Solo crear estructura si NO existe
     - mkdir -p $REPOPATH/storage/app/public/avatars 2>/dev/null || true
@@ -37,23 +37,23 @@ deployment:
     - chmod -R 755 $REPOPATH/storage/logs/ 2>/dev/null || true
     
     # Solo generar clave si NO existe
-    - php $REPOPATH/artisan key:generate --no-interaction --show > /dev/null 2>&1 || php $REPOPATH/artisan key:generate --no-interaction || true
+    - /usr/local/bin/php $REPOPATH/artisan key:generate --no-interaction --show > /dev/null 2>&1 || /usr/local/bin/php $REPOPATH/artisan key:generate --no-interaction || true
     
     # Crear enlace simbólico para storage público (force para sobrescribir si es necesario)
-    - php $REPOPATH/artisan storage:link --force 2>/dev/null || true
+    - /usr/local/bin/php $REPOPATH/artisan storage:link --force 2>/dev/null || true
     
     # 🔒 LIMPIAR CACHE SIN TOCAR DATOS
-    - php $REPOPATH/artisan config:clear
-    - php $REPOPATH/artisan cache:clear
-    - php $REPOPATH/artisan route:clear
-    - php $REPOPATH/artisan view:clear
+    - /usr/local/bin/php $REPOPATH/artisan config:clear
+    - /usr/local/bin/php $REPOPATH/artisan cache:clear
+    - /usr/local/bin/php $REPOPATH/artisan route:clear
+    - /usr/local/bin/php $REPOPATH/artisan view:clear
     
     # 🗃️ MIGRACIONES (solo si hay nuevas - NO borra datos)
-    - php $REPOPATH/artisan migrate --force --no-interaction || echo "No migrations needed"
+    - /usr/local/bin/php $REPOPATH/artisan migrate --force --no-interaction || echo "No migrations needed"
     
     # Cachear configuración para mejor rendimiento
-    - php $REPOPATH/artisan config:cache
-    - php $REPOPATH/artisan route:cache
+    - /usr/local/bin/php $REPOPATH/artisan config:cache
+    - /usr/local/bin/php $REPOPATH/artisan route:cache
     
     # 🌐 AJUSTAR PERMISOS DEL DIRECTORIO PÚBLICO (no copiar, usar directo)
     # Los archivos ya están en $REPOPATH/public/ y el dominio apunta ahí
