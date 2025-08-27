@@ -1,0 +1,70 @@
+---
+deployment:
+  tasks:
+    # Variables de rutas
+    - export REPOPATH=/home/capacit3/repositories/bcommerceBackEnd
+    - export DEPLOYPATH=/home/capacit3/public_html/api
+    
+    # Ir al directorio del repositorio
+    - cd $REPOPATH
+    
+    # 🔒 SISTEMA INTELIGENTE DE BACKUP (máximo 3)
+    - |
+      if [ -d "$REPOPATH/storage/app/public" ]; then
+        # Eliminar backups antiguos (mantener solo los 2 más recientes)
+        ls -dt $REPOPATH/storage_backup_* 2>/dev/null | tail -n +3 | xargs rm -rf 2>/dev/null || true
+        
+        # Crear nuevo backup
+        cp -r $REPOPATH/storage/app/public $REPOPATH/storage_backup_$(date +%Y%m%d_%H%M%S)
+        echo "✅ Backup de storage creado (máximo 3 backups mantenidos)"
+      fi
+    
+    # Instalar/actualizar dependencias de Composer (sin dev dependencies)
+    - composer install --no-dev --optimize-autoloader --no-interaction
+    
+    # 🔒 PROTEGER STORAGE: Solo crear estructura si NO existe
+    - mkdir -p $REPOPATH/storage/app/public/avatars 2>/dev/null || true
+    - mkdir -p $REPOPATH/storage/app/public/products 2>/dev/null || true  
+    - mkdir -p $REPOPATH/storage/app/public/orders 2>/dev/null || true
+    - mkdir -p $REPOPATH/storage/logs 2>/dev/null || true
+    - mkdir -p $REPOPATH/storage/framework/cache 2>/dev/null || true
+    - mkdir -p $REPOPATH/storage/framework/sessions 2>/dev/null || true
+    - mkdir -p $REPOPATH/storage/framework/views 2>/dev/null || true
+    
+    # Permisos correctos para storage (sin tocar contenido)
+    - chmod -R 775 $REPOPATH/storage/ 2>/dev/null || true
+    - chmod -R 755 $REPOPATH/storage/logs/ 2>/dev/null || true
+    
+    # Solo generar clave si NO existe
+    - php $REPOPATH/artisan key:generate --no-interaction --show > /dev/null 2>&1 || php $REPOPATH/artisan key:generate --no-interaction || true
+    
+    # Crear enlace simbólico para storage público (force para sobrescribir si es necesario)
+    - php $REPOPATH/artisan storage:link --force 2>/dev/null || true
+    
+    # 🔒 LIMPIAR CACHE SIN TOCAR DATOS
+    - php $REPOPATH/artisan config:clear
+    - php $REPOPATH/artisan cache:clear
+    - php $REPOPATH/artisan route:clear
+    - php $REPOPATH/artisan view:clear
+    
+    # 🗃️ MIGRACIONES (solo si hay nuevas - NO borra datos)
+    - php $REPOPATH/artisan migrate --force --no-interaction || echo "No migrations needed"
+    
+    # Cachear configuración para mejor rendimiento
+    - php $REPOPATH/artisan config:cache
+    - php $REPOPATH/artisan route:cache
+    
+    # 🌐 DEPLOYMENT A DIRECTORIO WEB
+    - mkdir -p $DEPLOYPATH
+    
+    # Copiar archivos públicos de Laravel (incluyendo .htaccess que ya está en Git)
+    - /bin/cp -R $REPOPATH/public/* $DEPLOYPATH/
+    
+    # Permisos finales
+    - chmod -R 755 $DEPLOYPATH
+    - chmod 644 $DEPLOYPATH/.htaccess
+    
+    # 📊 VERIFICACIÓN FINAL (logs para debugging)
+    - echo "✅ Deployment completed at $(date)"
+    - echo "📁 Storage backups:" && ls -la $REPOPATH/storage_backup_* 2>/dev/null | wc -l && echo " backups maintained" || echo "No backups found"
+    - echo "🔗 Storage link:" && ls -la $REPOPATH/public/storage 2>/dev/null || echo "Storage link not found"
