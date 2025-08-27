@@ -3,6 +3,10 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -18,6 +22,7 @@ class AppServiceProvider extends ServiceProvider
         AuthServiceProvider::class,
         AccountingServiceProvider::class,
         MailServiceProvider::class, // ✅ Mail system provider
+        TimezoneServiceProvider::class, // ✅ Ecuador timezone configuration
 
         // Proveedores específicos por dominio
         RecommendationServiceProvider::class,
@@ -62,8 +67,52 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Configure critical rate limiters for security
+        $this->configureRateLimiters();
+        
         // Register DeUna provider on-demand for payment-related routes only
         $this->registerDeunaProviderOnDemand();
+        
+        // Configure Ecuador timezone for Carbon globally
+        $this->configureEcuadorTimezone();
+    }
+
+    /**
+     * Configure critical rate limiters for security
+     */
+    private function configureRateLimiters(): void
+    {
+        // Checkout rate limiter - más restrictivo
+        RateLimiter::for('checkout', function (Request $request) {
+            return [
+                // 5 intentos por minuto por IP
+                Limit::perMinute(5)->by($request->ip()),
+                // 10 intentos por minuto por usuario autenticado
+                Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()),
+            ];
+        });
+
+        // Webhook rate limiter - moderado pero protegido
+        RateLimiter::for('webhook', function (Request $request) {
+            return [
+                // 30 webhooks por minuto por IP (para servicios legítimos)
+                Limit::perMinute(30)->by($request->ip()),
+                // 100 por hora máximo
+                Limit::perHour(100)->by($request->ip()),
+            ];
+        });
+
+        // Payment rate limiter - muy restrictivo
+        RateLimiter::for('payment', function (Request $request) {
+            return [
+                // 3 intentos por minuto por IP
+                Limit::perMinute(3)->by($request->ip()),
+                // 5 intentos por minuto por usuario
+                Limit::perMinute(5)->by($request->user()?->id ?: $request->ip()),
+                // 20 por hora máximo
+                Limit::perHour(20)->by($request->user()?->id ?: $request->ip()),
+            ];
+        });
     }
 
     /**
@@ -102,6 +151,32 @@ class AppServiceProvider extends ServiceProvider
             if (! $this->app->providerIsLoaded(DeunaServiceProvider::class)) {
                 $this->app->register(DeunaServiceProvider::class);
             }
+        }
+    }
+
+    /**
+     * Configure Ecuador timezone for Carbon globally
+     */
+    private function configureEcuadorTimezone(): void
+    {
+        // Set Ecuador timezone as default for all Carbon instances
+        $timezone = config('app.timezone', 'America/Guayaquil');
+        
+        // Configure PHP's default timezone
+        date_default_timezone_set($timezone);
+        
+        // Configure Carbon's default timezone for new instances
+        Carbon::setLocale(config('app.locale', 'es'));
+        
+        // Log timezone configuration for verification
+        if (config('app.debug')) {
+            $now = Carbon::now();
+            \Log::info('Ecuador Timezone Configuration', [
+                'php_timezone' => date_default_timezone_get(),
+                'carbon_timezone' => $now->timezoneName,
+                'current_time' => $now->format('Y-m-d H:i:s P'),
+                'offset' => $now->format('P'),
+            ]);
         }
     }
 }

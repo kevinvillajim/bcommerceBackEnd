@@ -234,6 +234,8 @@ class OrderEntity
         ?float $originalTotal = null,
         float $volumeDiscountSavings = 0.0,
         bool $volumeDiscountsApplied = false,
+        // 🔧 AGREGADO: Descuentos del vendedor (FALTABA!)
+        float $sellerDiscountSavings = 0.0,
         // ✅ NUEVOS: Campos de pricing
         float $subtotalProducts = 0.0,
         float $ivaAmount = 0.0,
@@ -263,6 +265,7 @@ class OrderEntity
             $originalTotal,
             $volumeDiscountSavings,
             $volumeDiscountsApplied,
+            $sellerDiscountSavings,
             $subtotalProducts,
             $ivaAmount,
             $shippingCost,

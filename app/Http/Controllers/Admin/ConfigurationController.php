@@ -389,11 +389,11 @@ class ConfigurationController extends Controller
             return response()->json([
                 'status' => 'success',
                 'data' => [
-                    'minLength' => $minLength,
-                    'requireSpecial' => $requireSpecial,
-                    'requireUppercase' => $requireUppercase,
-                    'requireNumbers' => $requireNumbers,
-                    'validationMessage' => $message,
+                    'min_length' => $minLength,
+                    'require_special' => $requireSpecial,
+                    'require_uppercase' => $requireUppercase,
+                    'require_numbers' => $requireNumbers,
+                    'validation_message' => $message,
                     'requirements' => $requirements,
                 ],
             ]);
@@ -461,15 +461,15 @@ class ConfigurationController extends Controller
     {
         try {
             $moderationConfig = [
-                'userStrikesThreshold' => $this->configService->getConfig('moderation.userStrikesThreshold', 3),
-                'contactScorePenalty' => $this->configService->getConfig('moderation.contactScorePenalty', 3),
-                'businessScoreBonus' => $this->configService->getConfig('moderation.businessScoreBonus', 15),
-                'contactPenaltyHeavy' => $this->configService->getConfig('moderation.contactPenaltyHeavy', 20),
-                'minimumContactScore' => $this->configService->getConfig('moderation.minimumContactScore', 8),
-                'scoreDifferenceThreshold' => $this->configService->getConfig('moderation.scoreDifferenceThreshold', 5),
-                'consecutiveNumbersLimit' => $this->configService->getConfig('moderation.consecutiveNumbersLimit', 7),
-                'numbersWithContextLimit' => $this->configService->getConfig('moderation.numbersWithContextLimit', 3),
-                'lowStockThreshold' => $this->configService->getConfig('moderation.lowStockThreshold', 10),
+                'user_strikes_threshold' => $this->configService->getConfig('moderation.userStrikesThreshold', 3),
+                'contact_score_penalty' => $this->configService->getConfig('moderation.contactScorePenalty', 3),
+                'business_score_bonus' => $this->configService->getConfig('moderation.businessScoreBonus', 15),
+                'contact_penalty_heavy' => $this->configService->getConfig('moderation.contactPenaltyHeavy', 20),
+                'minimum_contact_score' => $this->configService->getConfig('moderation.minimumContactScore', 8),
+                'score_difference_threshold' => $this->configService->getConfig('moderation.scoreDifferenceThreshold', 5),
+                'consecutive_numbers_limit' => $this->configService->getConfig('moderation.consecutiveNumbersLimit', 7),
+                'numbers_with_context_limit' => $this->configService->getConfig('moderation.numbersWithContextLimit', 3),
+                'low_stock_threshold' => $this->configService->getConfig('moderation.lowStockThreshold', 10),
             ];
 
             return response()->json([
@@ -493,15 +493,15 @@ class ConfigurationController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'userStrikesThreshold' => 'required|integer|min:1|max:10',
-                'contactScorePenalty' => 'required|integer|min:1|max:20',
-                'businessScoreBonus' => 'required|integer|min:5|max:50',
-                'contactPenaltyHeavy' => 'required|integer|min:10|max:50',
-                'minimumContactScore' => 'required|integer|min:5|max:20',
-                'scoreDifferenceThreshold' => 'required|integer|min:3|max:15',
-                'consecutiveNumbersLimit' => 'required|integer|min:5|max:15',
-                'numbersWithContextLimit' => 'required|integer|min:2|max:8',
-                'lowStockThreshold' => 'required|integer|min:1|max:50',
+                'user_strikes_threshold' => 'required|integer|min:1|max:10',
+                'contact_score_penalty' => 'required|integer|min:1|max:20',
+                'business_score_bonus' => 'required|integer|min:5|max:50',
+                'contact_penalty_heavy' => 'required|integer|min:10|max:50',
+                'minimum_contact_score' => 'required|integer|min:5|max:20',
+                'score_difference_threshold' => 'required|integer|min:3|max:15',
+                'consecutive_numbers_limit' => 'required|integer|min:5|max:15',
+                'numbers_with_context_limit' => 'required|integer|min:2|max:8',
+                'low_stock_threshold' => 'required|integer|min:1|max:50',
             ]);
 
             if ($validator->fails()) {
@@ -514,15 +514,15 @@ class ConfigurationController extends Controller
 
             $configs = $request->all();
             $configMapping = [
-                'userStrikesThreshold' => 'moderation.userStrikesThreshold',
-                'contactScorePenalty' => 'moderation.contactScorePenalty',
-                'businessScoreBonus' => 'moderation.businessScoreBonus',
-                'contactPenaltyHeavy' => 'moderation.contactPenaltyHeavy',
-                'minimumContactScore' => 'moderation.minimumContactScore',
-                'scoreDifferenceThreshold' => 'moderation.scoreDifferenceThreshold',
-                'consecutiveNumbersLimit' => 'moderation.consecutiveNumbersLimit',
-                'numbersWithContextLimit' => 'moderation.numbersWithContextLimit',
-                'lowStockThreshold' => 'moderation.lowStockThreshold',
+                'user_strikes_threshold' => 'moderation.userStrikesThreshold',
+                'contact_score_penalty' => 'moderation.contactScorePenalty',
+                'business_score_bonus' => 'moderation.businessScoreBonus',
+                'contact_penalty_heavy' => 'moderation.contactPenaltyHeavy',
+                'minimum_contact_score' => 'moderation.minimumContactScore',
+                'score_difference_threshold' => 'moderation.scoreDifferenceThreshold',
+                'consecutive_numbers_limit' => 'moderation.consecutiveNumbersLimit',
+                'numbers_with_context_limit' => 'moderation.numbersWithContextLimit',
+                'low_stock_threshold' => 'moderation.lowStockThreshold',
             ];
 
             // Update each configuration
@@ -554,8 +554,8 @@ class ConfigurationController extends Controller
         try {
             $shippingConfig = [
                 'enabled' => $this->configService->getConfig('shipping.enabled', true),
-                'freeThreshold' => $this->configService->getConfig('shipping.free_threshold', 50.00),
-                'defaultCost' => $this->configService->getConfig('shipping.default_cost', 5.00),
+                'free_threshold' => $this->configService->getConfig('shipping.free_threshold', 50.00),
+                'default_cost' => $this->configService->getConfig('shipping.default_cost', 5.00),
             ];
 
             return response()->json([
@@ -582,8 +582,6 @@ class ConfigurationController extends Controller
             
             $validator = Validator::make($request->all(), [
                 'enabled' => 'required|boolean',
-                'freeThreshold' => 'nullable|numeric|min:0',
-                'defaultCost' => 'nullable|numeric|min:0',
                 'free_threshold' => 'nullable|numeric|min:0',
                 'default_cost' => 'nullable|numeric|min:0',
             ]);
@@ -600,19 +598,19 @@ class ConfigurationController extends Controller
             $configs = $request->all();
             \Log::info('✅ Datos validados:', $configs);
             
-            // Normalizar los datos - manejar tanto camelCase como snake_case
+            // Normalizar los datos - ahora solo snake_case
             $normalizedConfigs = [
                 'enabled' => $configs['enabled'],
-                'freeThreshold' => $configs['freeThreshold'] ?? $configs['free_threshold'] ?? 0,
-                'defaultCost' => $configs['defaultCost'] ?? $configs['default_cost'] ?? 0,
+                'free_threshold' => $configs['free_threshold'] ?? 0,
+                'default_cost' => $configs['default_cost'] ?? 0,
             ];
             
             \Log::info('🔄 Datos normalizados:', $normalizedConfigs);
             
             $configMapping = [
                 'enabled' => 'shipping.enabled',
-                'freeThreshold' => 'shipping.free_threshold',
-                'defaultCost' => 'shipping.default_cost',
+                'free_threshold' => 'shipping.free_threshold',
+                'default_cost' => 'shipping.default_cost',
             ];
 
             // Update each configuration
@@ -648,10 +646,10 @@ class ConfigurationController extends Controller
         try {
             $developmentConfig = [
                 'mode' => $this->configService->getConfig('development.mode', false),
-                'allowAdminOnlyAccess' => $this->configService->getConfig('development.allowAdminOnlyAccess', false),
-                'bypassEmailVerification' => $this->configService->getConfig('email.bypassVerification', true),
-                'requireEmailVerification' => $this->configService->getConfig('email.requireVerification', false),
-                'emailVerificationTimeout' => $this->configService->getConfig('email.verificationTimeout', 24),
+                'allow_admin_only_access' => $this->configService->getConfig('development.allowAdminOnlyAccess', false),
+                'bypass_email_verification' => $this->configService->getConfig('email.bypassVerification', true),
+                'require_email_verification' => $this->configService->getConfig('email.requireVerification', false),
+                'email_verification_timeout' => $this->configService->getConfig('email.verificationTimeout', 24),
             ];
 
             return response()->json([
@@ -676,10 +674,10 @@ class ConfigurationController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'mode' => 'required|boolean',
-                'allowAdminOnlyAccess' => 'required|boolean',
-                'bypassEmailVerification' => 'required|boolean',
-                'requireEmailVerification' => 'required|boolean',
-                'emailVerificationTimeout' => 'required|integer|min:1|max:168', // Max 1 week
+                'allow_admin_only_access' => 'required|boolean',
+                'bypass_email_verification' => 'required|boolean',
+                'require_email_verification' => 'required|boolean',
+                'email_verification_timeout' => 'required|integer|min:1|max:168', // Max 1 week
             ]);
 
             if ($validator->fails()) {
@@ -693,10 +691,10 @@ class ConfigurationController extends Controller
             $configs = $request->all();
             $configMapping = [
                 'mode' => 'development.mode',
-                'allowAdminOnlyAccess' => 'development.allowAdminOnlyAccess',
-                'bypassEmailVerification' => 'email.bypassVerification',
-                'requireEmailVerification' => 'email.requireVerification',
-                'emailVerificationTimeout' => 'email.verificationTimeout',
+                'allow_admin_only_access' => 'development.allowAdminOnlyAccess',
+                'bypass_email_verification' => 'email.bypassVerification',
+                'require_email_verification' => 'email.requireVerification',
+                'email_verification_timeout' => 'email.verificationTimeout',
             ];
 
             // Update each configuration

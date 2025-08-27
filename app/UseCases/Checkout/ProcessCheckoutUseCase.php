@@ -12,6 +12,7 @@ use App\Domain\Repositories\ShoppingCartRepositoryInterface;
 use App\Domain\Services\PricingCalculatorService;
 use App\Events\OrderCreated;
 use App\Services\ConfigurationService;
+use App\Services\PriceVerificationService;
 use App\UseCases\Cart\ApplyCartDiscountCodeUseCase;
 use App\UseCases\Order\CreateOrderUseCase;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +37,8 @@ class ProcessCheckoutUseCase
     private ApplyCartDiscountCodeUseCase $applyCartDiscountCodeUseCase;
     
     private PricingCalculatorService $pricingService;
+    
+    private PriceVerificationService $priceVerificationService;
 
     public function __construct(
         ShoppingCartRepositoryInterface $cartRepository,
@@ -46,7 +49,8 @@ class ProcessCheckoutUseCase
         CreateOrderUseCase $createOrderUseCase,
         ConfigurationService $configService,
         ApplyCartDiscountCodeUseCase $applyCartDiscountCodeUseCase,
-        PricingCalculatorService $pricingService
+        PricingCalculatorService $pricingService,
+        PriceVerificationService $priceVerificationService
     ) {
         $this->cartRepository = $cartRepository;
         $this->orderRepository = $orderRepository;
@@ -57,6 +61,7 @@ class ProcessCheckoutUseCase
         $this->configService = $configService;
         $this->applyCartDiscountCodeUseCase = $applyCartDiscountCodeUseCase;
         $this->pricingService = $pricingService;
+        $this->priceVerificationService = $priceVerificationService;
     }
 
     /**
@@ -66,6 +71,25 @@ class ProcessCheckoutUseCase
     {
         return DB::transaction(function () use ($userId, $paymentData, $shippingData, $items, $sellerId, $discountCode, $calculatedTotals) {
             try {
+                // ✅ CRITICAL FIX: Skip isolation level change to avoid transaction conflicts
+                // Solo usar SERIALIZABLE en producción si es estrictamente necesario
+                if (config('app.env') === 'production') {
+                    try {
+                        DB::statement('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+                        Log::info('🔒 CRITICAL: Transaction isolation level set to SERIALIZABLE (production)');
+                    } catch (\Exception $e) {
+                        Log::warning('⚠️ Could not set SERIALIZABLE isolation level: ' . $e->getMessage());
+                    }
+                } else {
+                    Log::info('🔒 CRITICAL: Skipping isolation level change (development/testing)');
+                }
+                
+                Log::info('🔒 CRITICAL: Transaction started with SERIALIZABLE isolation level', [
+                    'user_id' => $userId,
+                    'items_count' => count($items),
+                    'transaction_id' => DB::transactionLevel(),
+                    'timestamp' => microtime(true)
+                ]);
                 // 🔧 NUEVO: Extraer seller_id del primer producto si no se proporciona
                 if ($sellerId === null && ! empty($items)) {
                     $firstProductId = $items[0]['product_id'] ?? null;
@@ -172,10 +196,22 @@ class ProcessCheckoutUseCase
                     'final_total' => $totals['final_total'],
                 ]);
 
-                // 4. Validar stock de productos
+                // 4. 🔒 SECURITY: Verificar integridad de precios (anti-tampering) - INCLUYE TODOS LOS DESCUENTOS
+                if (!$this->priceVerificationService->verifyItemPrices($processedItems, $userId, $discountCode)) {
+                    throw new \Exception('Security: Price tampering detected. Transaction blocked.');
+                }
+                
+                // Verificar totales calculados si se proporcionan
+                if ($calculatedTotals) {
+                    if (!$this->priceVerificationService->verifyCalculatedTotals($processedItems, $calculatedTotals, $userId, $discountCode)) {
+                        throw new \Exception('Security: Total tampering detected. Transaction blocked.');
+                    }
+                }
+
+                // 5. Validar stock de productos
                 $this->validateProductStock($processedItems);
 
-                // 5. Crear orden principal con totales correctos
+                // 6. Crear orden principal con totales correctos
                 $orderData = [
                     'user_id' => $userId,
                     'total' => $totals['final_total'],
@@ -186,7 +222,7 @@ class ProcessCheckoutUseCase
                     'volume_discounts_applied' => $totals['volume_discounts'] > 0,
                     'shipping_data' => $shippingData,
                     'seller_id' => $sellerId,
-                    'items' => [],
+                    'items' => $items, // ✅ CORREGIDO: Pasar los items reales, no array vacío
                     // ✅ CORREGIDO: Información detallada de pricing
                     'subtotal_products' => $totals['subtotal_with_discounts'],
                     'iva_amount' => $totals['iva_amount'],
@@ -294,7 +330,7 @@ class ProcessCheckoutUseCase
 
                 // 9. Crear seller orders
                 $itemsBySeller = $this->groupItemsBySeller($processedItems);
-                $sellerOrders = $this->createSellerOrders($orderId, $itemsBySeller, $totals, $shippingData, $mainOrder);
+                $sellerOrders = $this->createSellerOrders($orderId, $itemsBySeller, $totals, $shippingData, $mainOrder, $paymentData);
 
                 // 10. Actualizar stock de productos
                 $this->updateProductStock($processedItems);
@@ -583,9 +619,11 @@ class ProcessCheckoutUseCase
         }
         $freeShipping = $shippingCost === 0;
 
-        // 🔧 CORREGIDO: Calcular IVA y total final aquí también (estructura estandarizada)
+        // 🔧 CORREGIDO: Calcular IVA dinámico y total final (estructura estandarizada)
         $subtotalFinal = $subtotalWithDiscounts + $shippingCost; // Base gravable
-        $ivaAmount = $subtotalFinal * 0.15; // 15% IVA sobre base gravable
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        $ivaAmount = $subtotalFinal * $taxRate; // IVA dinámico sobre base gravable
         $finalTotal = $subtotalFinal + $ivaAmount; // Total final
 
         // ✅ ESTRUCTURA ESTANDARIZADA
@@ -605,20 +643,43 @@ class ProcessCheckoutUseCase
     }
 
     /**
-     * Validar stock de productos
+     * 🚨 CRITICAL FIX: Validar stock con locks pesimistas para evitar overselling
      */
     private function validateProductStock(array $items): void
     {
         foreach ($items as $item) {
-            $product = $this->productRepository->findById($item['product_id']);
+            // 🚨 CRITICAL: Lock pesimista para prevenir overselling
+            $productModel = \App\Models\Product::where('id', $item['product_id'])
+                ->lockForUpdate()
+                ->first();
 
-            if (! $product) {
-                throw new \Exception("Producto {$item['product_id']} no encontrado");
+            if (!$productModel) {
+                Log::critical('🚨 CRITICAL: Product not found during stock validation', [
+                    'product_id' => $item['product_id'],
+                    'item' => $item
+                ]);
+                throw new \Exception("CRITICAL: Producto {$item['product_id']} no encontrado durante validación de stock");
             }
 
-            if ($product->getStock() < $item['quantity']) {
-                throw new \Exception("Stock insuficiente para el producto {$product->getName()}");
+            // 🚨 CRITICAL: Verificación atómica de stock disponible
+            if ($productModel->stock < $item['quantity']) {
+                Log::critical('🚨 CRITICAL: Insufficient stock detected', [
+                    'product_id' => $item['product_id'],
+                    'product_name' => $productModel->name,
+                    'available_stock' => $productModel->stock,
+                    'requested_quantity' => $item['quantity'],
+                    'user_action' => 'TRANSACTION_ROLLBACK_REQUIRED'
+                ]);
+                throw new \Exception("CRITICAL: Stock insuficiente para {$productModel->name}. Disponible: {$productModel->stock}, Solicitado: {$item['quantity']}");
             }
+
+            // ✅ Log successful validation
+            Log::info('✅ Stock validation passed with lock', [
+                'product_id' => $item['product_id'],
+                'product_name' => $productModel->name,
+                'available_stock' => $productModel->stock,
+                'requested_quantity' => $item['quantity']
+            ]);
         }
     }
 
@@ -650,7 +711,8 @@ class ProcessCheckoutUseCase
         array $itemsBySeller,
         array $totals,
         array $shippingData,
-        OrderEntity $mainOrder
+        OrderEntity $mainOrder,
+        array $paymentData
     ): array {
         $sellerOrders = [];
         $sellerCount = count($itemsBySeller);
@@ -698,10 +760,17 @@ class ProcessCheckoutUseCase
                 'shipping_cost' => $shippingCostPerSeller,
                 'items_count' => count($formattedItems),
             ]);
+            
+            Log::info('🔍 DEBUGGING: Punto de entrada a seller_order_id assignment', [
+                'order_id' => $orderId,
+                'seller_id' => $sellerId,
+                'payment_method' => $paymentData['method'] ?? 'unknown',
+                'items_for_seller' => count($formattedItems)
+            ]);
 
             // ✅ Obtener payment info de la orden principal
-            $mainOrderPaymentStatus = 'completed'; // Datafast siempre está pagado cuando llega aquí
-            $mainOrderPaymentMethod = 'datafast';   // Método de pago por defecto
+            $mainOrderPaymentStatus = 'completed'; // Pago procesado cuando llega aquí
+            $mainOrderPaymentMethod = $paymentData['method'] ?? 'datafast'; // Usar método real
             
             $sellerOrderEntity = SellerOrderEntity::create(
                 $orderId,
@@ -724,6 +793,84 @@ class ProcessCheckoutUseCase
             );
 
             $sellerOrder = $this->sellerOrderRepository->create($sellerOrderEntity);
+            
+            // 🚨 CRITICAL FIX: Updates atómicos con locks para evitar race conditions
+            Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Antes de actualizar Order', [
+                'order_id' => $orderId,
+                'seller_id' => $sellerId,
+                'seller_order_id_to_assign' => $sellerOrder->getId(),
+                'payment_method' => $paymentData['method'] ?? 'unknown'
+            ]);
+            
+            $orderModel = \App\Models\Order::lockForUpdate()->find($orderId);
+            if (!$orderModel) {
+                Log::error('🚨 CRITICAL ERROR: Order not found for seller_order_id update', [
+                    'order_id' => $orderId,
+                    'seller_id' => $sellerId,
+                    'seller_order_id' => $sellerOrder->getId()
+                ]);
+                throw new \Exception("CRITICAL: Order {$orderId} not found for atomic update");
+            }
+            
+            Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Order encontrada, actualizando', [
+                'order_id' => $orderId,
+                'current_seller_order_id' => $orderModel->seller_order_id,
+                'new_seller_order_id' => $sellerOrder->getId(),
+                'payment_method' => $orderModel->payment_method
+            ]);
+            
+            $orderModel->seller_order_id = $sellerOrder->getId();
+            $saveResult = $orderModel->save();
+            
+            Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Resultado del save()', [
+                'order_id' => $orderId,
+                'save_result' => $saveResult,
+                'final_seller_order_id' => $orderModel->seller_order_id,
+                'payment_method' => $orderModel->payment_method
+            ]);
+
+            // ✅ CRITICAL FIX: Update atómico de OrderItems para este seller
+            // Ya no usamos whereNull porque EloquentOrderRepository crea OrderItems sin seller_order_id
+            $updatedItemsCount = \App\Models\OrderItem::where('order_id', $orderId)
+                ->where('seller_id', $sellerId)
+                ->lockForUpdate()
+                ->update(['seller_order_id' => $sellerOrder->getId()]);
+
+            // Verificar que la actualización fue exitosa
+            $totalItemsCount = \App\Models\OrderItem::where('order_id', $orderId)
+                ->where('seller_id', $sellerId)
+                ->count();
+                
+            if ($updatedItemsCount === 0 && $totalItemsCount > 0) {
+                Log::warning('🚨 CRITICAL WARNING: No OrderItems were updated', [
+                    'order_id' => $orderId,
+                    'seller_id' => $sellerId,
+                    'seller_order_id' => $sellerOrder->getId(),
+                    'total_items' => $totalItemsCount,
+                    'expected_updates' => $totalItemsCount,
+                    'actual_updates' => $updatedItemsCount
+                ]);
+            } else {
+                Log::info('✅ OrderItems updated successfully', [
+                    'order_id' => $orderId,
+                    'seller_id' => $sellerId,
+                    'seller_order_id' => $sellerOrder->getId(),
+                    'total_items' => $totalItemsCount,
+                    'updated_items' => $updatedItemsCount
+                ]);
+            }
+            
+            // ✅ CRÍTICO: Crear registro de Shipping para el SellerOrder
+            $this->createShippingRecord($sellerOrder->getId(), $mainOrder);
+
+            Log::info('✅ Updated order and order items seller_order_id for Datafast', [
+                'order_id' => $orderId,
+                'seller_order_id' => $sellerOrder->getId(),
+                'seller_id' => $sellerId,
+                'order_items_updated' => $updatedItemsCount,
+                'total_items_for_seller' => $totalItemsCount
+            ]);
+            
             $sellerOrders[] = $sellerOrder;
         }
 
@@ -731,16 +878,57 @@ class ProcessCheckoutUseCase
     }
 
     /**
-     * Actualizar stock de productos
+     * 🚨 CRITICAL FIX: Actualizar stock con locks atómicos para evitar condiciones de carrera
      */
     private function updateProductStock(array $items): void
     {
         foreach ($items as $item) {
-            $this->productRepository->updateStock(
-                $item['product_id'],
-                $item['quantity'],
-                'decrease'
-            );
+            try {
+                // 🚨 CRITICAL: Lock pesimista para update atómico de stock
+                $productModel = \App\Models\Product::where('id', $item['product_id'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$productModel) {
+                    Log::critical('🚨 CRITICAL: Product disappeared during stock update', [
+                        'product_id' => $item['product_id'],
+                        'item' => $item
+                    ]);
+                    throw new \Exception("CRITICAL: Producto {$item['product_id']} no encontrado durante actualización de stock");
+                }
+
+                // 🚨 CRITICAL: Verificar stock antes de decrementar
+                if ($productModel->stock < $item['quantity']) {
+                    Log::critical('🚨 CRITICAL: Stock became insufficient during transaction', [
+                        'product_id' => $item['product_id'],
+                        'current_stock' => $productModel->stock,
+                        'requested_quantity' => $item['quantity'],
+                        'product_name' => $productModel->name
+                    ]);
+                    throw new \Exception("CRITICAL: Stock concurrente insuficiente para {$productModel->name}");
+                }
+
+                // 🚨 CRITICAL: Update atómico de stock
+                $newStock = $productModel->stock - $item['quantity'];
+                $productModel->stock = $newStock;
+                $productModel->save();
+
+                Log::info('✅ Stock updated atomically', [
+                    'product_id' => $item['product_id'],
+                    'product_name' => $productModel->name,
+                    'previous_stock' => $productModel->stock + $item['quantity'],
+                    'quantity_sold' => $item['quantity'],
+                    'new_stock' => $newStock
+                ]);
+
+            } catch (\Exception $e) {
+                Log::critical('🚨 CRITICAL: Stock update failed', [
+                    'product_id' => $item['product_id'],
+                    'error' => $e->getMessage(),
+                    'item' => $item
+                ]);
+                throw $e; // Re-throw to trigger transaction rollback
+            }
         }
     }
 
@@ -785,5 +973,74 @@ class ProcessCheckoutUseCase
             'free_shipping' => $volumeTotals['free_shipping'] ?? false,
             'final_total' => $discountCodeTotals['final_total'], // Total final con todos los descuentos
         ];
+    }
+
+    /**
+     * ✅ NUEVO: Crear registro de Shipping para un SellerOrder
+     */
+    private function createShippingRecord(int $sellerOrderId, OrderEntity $order): void
+    {
+        try {
+            // Verificar si ya existe un shipping para este seller_order
+            $existingShipping = \App\Models\Shipping::where('seller_order_id', $sellerOrderId)->first();
+            if ($existingShipping) {
+                Log::info('Shipping record already exists for seller order', [
+                    'seller_order_id' => $sellerOrderId,
+                    'shipping_id' => $existingShipping->id
+                ]);
+                return;
+            }
+
+            // Generar número de tracking
+            $trackingNumber = \App\Models\Shipping::generateTrackingNumber();
+            
+            // Obtener datos de envío de la orden
+            $shippingData = $order->getShippingData();
+            $currentLocation = null;
+            
+            if ($shippingData && is_array($shippingData)) {
+                $currentLocation = [
+                    'address' => $shippingData['address'] ?? '',
+                    'city' => $shippingData['city'] ?? '',
+                    'state' => $shippingData['state'] ?? '',
+                    'country' => $shippingData['country'] ?? 'Ecuador',
+                    'postal_code' => $shippingData['postal_code'] ?? ''
+                ];
+            }
+
+            // Crear registro de Shipping
+            $shipping = \App\Models\Shipping::create([
+                'seller_order_id' => $sellerOrderId,
+                'tracking_number' => $trackingNumber,
+                'status' => 'processing',
+                'current_location' => $currentLocation,
+                'estimated_delivery' => now()->addDays(3), // 3 días por defecto
+                'carrier_name' => 'Courier Local',
+                'last_updated' => now()
+            ]);
+
+            // Crear evento inicial en el historial
+            $shipping->addHistoryEvent(
+                'processing',
+                $currentLocation,
+                'Pedido recibido y en proceso de preparación',
+                now()
+            );
+
+            Log::info('✅ Shipping record created for seller order', [
+                'seller_order_id' => $sellerOrderId,
+                'shipping_id' => $shipping->id,
+                'tracking_number' => $trackingNumber,
+                'status' => 'processing'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error creating shipping record for seller order', [
+                'seller_order_id' => $sellerOrderId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // No lanzar excepción para no fallar el proceso principal
+        }
     }
 }

@@ -67,7 +67,7 @@ return [
     |
     */
 
-    'timezone' => 'America/Guayaquil',
+    'timezone' => env('APP_TIMEZONE', 'America/Guayaquil'),
 
     /*
     |--------------------------------------------------------------------------

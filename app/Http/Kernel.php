@@ -39,6 +39,7 @@ class Kernel extends HttpKernel
             \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
             \App\Http\Middleware\TrimStrings::class,
             \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
+            \App\Http\Middleware\SecurityHeadersMiddleware::class, // Security headers for web routes
         ],
 
         'api' => [
@@ -66,6 +67,9 @@ class Kernel extends HttpKernel
         'password.confirm' => \Illuminate\Auth\Middleware\RequirePassword::class,
         'signed' => \App\Http\Middleware\ValidateSignature::class,
         'throttle' => \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        'throttle.checkout' => \Illuminate\Routing\Middleware\ThrottleRequests::class.':checkout',
+        'throttle.webhook' => \Illuminate\Routing\Middleware\ThrottleRequests::class.':webhook',
+        'throttle.payment' => \Illuminate\Routing\Middleware\ThrottleRequests::class.':payment',
         'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         'jwt.auth' => \App\Http\Middleware\JwtMiddleware::class, // Add JWT middleware
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
@@ -74,6 +78,7 @@ class Kernel extends HttpKernel
         'track.interaction' => \App\Http\Middleware\TrackInteractionMiddleware::class, // Auto-tracking middleware for user interactions
         'maintenance' => \App\Http\Middleware\MaintenanceMiddleware::class, // Development maintenance mode
         'deuna.webhook' => \App\Http\Middleware\DeunaWebhookMiddleware::class, // DeUna webhook validation
+        'security.headers' => \App\Http\Middleware\SecurityHeadersMiddleware::class, // Security headers (CSP, HSTS, etc.)
     ];
 
     protected $routeMiddleware = [

@@ -8,8 +8,11 @@ use App\Domain\Repositories\OrderRepositoryInterface;
 use App\Domain\Repositories\ProductRepositoryInterface;
 use App\Domain\Services\PricingCalculatorService;
 use App\Models\Configuration;
+use App\Services\ConfigurationService;
 use App\Services\OrderStatusHandler;
 use Exception;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -21,7 +24,8 @@ class HandleDeunaWebhookUseCase
         private OrderRepositoryInterface $orderRepository,
         private ProductRepositoryInterface $productRepository,
         private OrderStatusHandler $orderStatusHandler,
-        private PricingCalculatorService $pricingService
+        private PricingCalculatorService $pricingService,
+        private ConfigurationService $configService
     ) {}
 
     /**
@@ -331,24 +335,97 @@ class HandleDeunaWebhookUseCase
     private function updateOrderStatus(string $orderId, string $paymentStatus, array $webhookData): void
     {
         try {
-            $order = $this->orderRepository->findById($orderId);
+            // 🚨 CRITICAL FIX: Try to find order by numeric ID first, then by order_number
+            $order = null;
+            
+            // Try to find by numeric ID (if orderId is numeric)
+            if (is_numeric($orderId)) {
+                $order = $this->orderRepository->findById((int)$orderId);
+                Log::info('🔍 CRITICAL: Searching order by numeric ID', [
+                    'order_id' => $orderId,
+                    'found' => $order !== null
+                ]);
+            }
+            
+            // If not found, try to find by order_number (string identifier)
             if (! $order) {
-                Log::warning('Order not found for status update', ['order_id' => $orderId]);
+                // Use Eloquent directly to search by order_number
+                $eloquentOrder = \App\Models\Order::where('order_number', $orderId)->first();
+                if ($eloquentOrder) {
+                    $order = $this->orderRepository->findById($eloquentOrder->id);
+                }
+                Log::info('🔍 CRITICAL: Searching order by order_number', [
+                    'order_number' => $orderId,
+                    'eloquent_found' => $eloquentOrder !== null,
+                    'repository_found' => $order !== null,
+                    'eloquent_id' => $eloquentOrder ? $eloquentOrder->id : null
+                ]);
+            }
+            
+            if (! $order) {
+                Log::warning('Order not found for status update', [
+                    'searched_id' => $orderId,
+                    'searched_as_numeric' => is_numeric($orderId),
+                    'searched_as_order_number' => true
+                ]);
 
                 return;
             }
 
             $orderStatus = $this->mapPaymentStatusToOrderStatus($paymentStatus);
-
-            $this->orderStatusHandler->updateOrderStatus($orderId, $orderStatus);
+            
+            // Use the actual numeric order ID for the update
+            $actualOrderId = $order->getId();
+            $this->orderStatusHandler->updateOrderStatus($actualOrderId, $orderStatus);
             
             // ✅ IMPORTANTE: Crear seller_orders cuando el pago está completo (Deuna)
             if ($paymentStatus === 'completed') {
+                Log::info('🚨 CRITICAL: About to create seller orders for DeUna payment', [
+                    'order_id' => $actualOrderId,
+                    'payment_status' => $paymentStatus,
+                ]);
+                
                 $this->createSellerOrdersForDeuna($order);
+                
+                // ✅ VERIFICAR INMEDIATAMENTE SI SE CREÓ (verification via direct DB query below)
+                Log::info('🔍 CRITICAL VERIFICATION: seller orders creation completed', [
+                    'order_id' => $actualOrderId,
+                    'verification_method' => 'direct_db_query_below',
+                ]);
+                
+                // ✅ VERIFICAR EN BD DIRECTAMENTE
+                $dbOrder = \App\Models\Order::find($actualOrderId);
+                Log::info('🔍 DB DIRECT CHECK: seller_order_id in database', [
+                    'order_id' => $actualOrderId,
+                    'db_seller_order_id' => $dbOrder ? $dbOrder->seller_order_id : 'ORDER_NOT_FOUND_IN_DB',
+                ]);
+                
+                // 🚨 FALLBACK: Si seller_order_id es NULL, buscar el seller_order y forzar la actualización
+                if ($dbOrder && $dbOrder->seller_order_id === null) {
+                    Log::error('🚨 CRITICAL BUG: seller_order_id is NULL after creation, applying FALLBACK');
+                    
+                    $sellerOrder = \App\Models\SellerOrder::where('order_id', $actualOrderId)->first();
+                    if ($sellerOrder) {
+                        Log::info('🔧 FALLBACK: Found seller_order, forcing update', [
+                            'seller_order_id' => $sellerOrder->id,
+                            'order_id' => $actualOrderId
+                        ]);
+                        
+                        // Forzar actualización directa en BD
+                        \App\Models\Order::where('id', $actualOrderId)->update([
+                            'seller_order_id' => $sellerOrder->id
+                        ]);
+                        
+                        Log::info('✅ FALLBACK: seller_order_id updated successfully via direct DB query');
+                    } else {
+                        Log::error('❌ FALLBACK: No seller_order found for order_id ' . $actualOrderId);
+                    }
+                }
             }
 
             Log::info('Order status updated based on payment status', [
-                'order_id' => $orderId,
+                'order_id' => $actualOrderId,
+                'original_search_id' => $orderId,
                 'payment_status' => $paymentStatus,
                 'order_status' => $orderStatus,
                 'seller_orders_created' => ($paymentStatus === 'completed'),
@@ -357,7 +434,7 @@ class HandleDeunaWebhookUseCase
         } catch (Exception $e) {
             Log::error('Error updating order status', [
                 'error' => $e->getMessage(),
-                'order_id' => $orderId,
+                'search_id' => $orderId,
                 'payment_status' => $paymentStatus,
             ]);
         }
@@ -379,13 +456,44 @@ class HandleDeunaWebhookUseCase
     }
 
     /**
-     * Create order from payment data when payment is completed
+     * 🚨 CRITICAL FIX: Create order with idempotency protection against duplicate webhooks
      * BEST PRACTICE: Webhook creates the order to ensure consistency
      */
     private function createOrderFromPayment($payment, array $webhookData): void
     {
         try {
             $orderId = $payment->getOrderId();
+            
+            // 🚨 CRITICAL FIX: Implement idempotency key to prevent duplicate processing
+            $idempotencyKey = $webhookData['idempotency_key'] ?? $payment->getPaymentId() ?? "webhook_{$orderId}";
+            $cacheKey = "webhook_processed_{$idempotencyKey}";
+            
+            // Check if webhook was already processed
+            $processed = Cache::get($cacheKey);
+            if ($processed) {
+                Log::info('🚨 CRITICAL: Webhook already processed, preventing duplicate', [
+                    'idempotency_key' => $idempotencyKey,
+                    'payment_id' => $payment->getPaymentId(),
+                    'order_id' => $orderId,
+                    'processed_at' => $processed['processed_at'],
+                    'action' => 'DUPLICATE_PREVENTION'
+                ]);
+                return; // Exit early to prevent duplicate processing
+            }
+            
+            // 🚨 CRITICAL: Mark as processing immediately to prevent race conditions
+            Cache::put($cacheKey, [
+                'processed_at' => now()->toISOString(),
+                'payment_id' => $payment->getPaymentId(),
+                'order_id' => $orderId,
+                'status' => 'processing'
+            ], 3600); // 1 hour TTL
+            
+            Log::info('🔒 CRITICAL: Webhook marked as processing', [
+                'idempotency_key' => $idempotencyKey,
+                'payment_id' => $payment->getPaymentId(),
+                'order_id' => $orderId
+            ]);
 
             // Check if order already exists (idempotency)
             $existingOrder = $this->orderRepository->findById($orderId);
@@ -396,6 +504,15 @@ class HandleDeunaWebhookUseCase
                 ]);
 
                 $this->orderStatusHandler->updateOrderStatus($orderId, 'paid');
+                
+                // 🚨 CRITICAL: Mark as completed in cache
+                Cache::put($cacheKey, [
+                    'processed_at' => now()->toISOString(),
+                    'payment_id' => $payment->getPaymentId(),
+                    'order_id' => $orderId,
+                    'status' => 'completed',
+                    'action' => 'order_existed_status_updated'
+                ], 3600);
 
                 return;
             }
@@ -537,19 +654,57 @@ class HandleDeunaWebhookUseCase
             // Create the order
             $order = $this->orderRepository->createFromWebhook($orderData);
 
+            // 🔥 NUEVO: Disparar evento OrderCreated para invalidar cache del carrito
+            Log::info('🚀 DeUna Webhook: Disparando evento OrderCreated para invalidar cache', [
+                'order_id' => $orderId,
+                'user_id' => $userId,
+                'seller_id' => $sellerId,
+                'payment_method' => 'deuna'
+            ]);
+            
+            event(new \App\Events\OrderCreated(
+                $orderId,
+                $userId,
+                $sellerId,
+                ['payment_method' => 'deuna', 'created_via' => 'webhook']
+            ));
+
+            // 🚨 CRITICAL: Mark webhook as successfully completed
+            Cache::put($cacheKey, [
+                'processed_at' => now()->toISOString(),
+                'completed_at' => now()->toISOString(),
+                'payment_id' => $payment->getPaymentId(),
+                'order_id' => $orderId,
+                'status' => 'completed_successfully',
+                'action' => 'order_created_successfully'
+            ], 3600);
+
             Log::info('Order created successfully from webhook', [
                 'order_id' => $orderId,
                 'payment_id' => $payment->getPaymentId(),
                 'amount' => $amount,
                 'customer_email' => $customerData['email'] ?? null,
+                'idempotency_key' => $idempotencyKey
             ]);
 
         } catch (\Exception $e) {
+            // 🚨 CRITICAL: Mark webhook as failed in cache to prevent retry loops but allow manual intervention
+            Cache::put($cacheKey, [
+                'processed_at' => now()->toISOString(),
+                'failed_at' => now()->toISOString(),
+                'payment_id' => $payment->getPaymentId(),
+                'order_id' => $orderId,
+                'status' => 'failed',
+                'error' => $e->getMessage(),
+                'action' => 'order_creation_failed'
+            ], 3600);
+
             Log::error('Failed to create order from payment', [
                 'error' => $e->getMessage(),
                 'payment_id' => $payment->getPaymentId(),
                 'order_id' => $payment->getOrderId(),
                 'trace' => $e->getTraceAsString(),
+                'idempotency_key' => $idempotencyKey ?? 'unknown'
             ]);
 
             // Don't throw exception to avoid webhook retry loops
@@ -597,24 +752,50 @@ class HandleDeunaWebhookUseCase
                 }
             }
 
-            // 🚨 CRITICAL: Validate product_id is not null before creating order item
-            if ($productId === null) {
-                Log::error('❌ CRITICAL: Cannot create order item with null product_id', [
+            // 🚨 CRITICAL FIX: Validación estricta ANTES de cualquier procesamiento
+            if ($productId === null || !is_numeric($productId) || $productId <= 0) {
+                Log::critical('🚨 CRITICAL VALIDATION FAILURE: Invalid product_id detected', [
+                    'product_id' => $productId,
+                    'product_id_type' => gettype($productId),
                     'item_index' => array_search($item, $paymentItems),
                     'item_name' => $item['name'] ?? 'Unknown Item',
-                    'item_keys' => array_keys($item),
                     'item_data' => $item,
-                    'all_items_count' => count($paymentItems),
-                    'all_items_summary' => array_map(function($i) {
-                        return [
-                            'name' => $i['name'] ?? 'no_name',
-                            'product_id' => $i['product_id'] ?? 'NULL',
-                            'keys' => array_keys($i)
-                        ];
-                    }, $paymentItems),
                     'payment_id' => isset($payment) ? $payment->getPaymentId() : 'unknown',
+                    'action' => 'TRANSACTION_ROLLBACK_INITIATED'
                 ]);
-                throw new \Exception('Cannot create order: product_id is required for all items. Item "' . ($item['name'] ?? 'Unknown') . '" has null product_id');
+                
+                // 🚨 CRITICAL: Rollback transaction immediately to prevent data corruption
+                DB::rollBack();
+                throw new \Exception("CRITICAL: product_id validation failed. Value: " . json_encode($productId) . " is not valid");
+            }
+
+            // 🚨 CRITICAL FIX: Verificar que el producto existe en la base de datos
+            try {
+                $productExists = $this->productRepository->findById($productId);
+                if (!$productExists) {
+                    Log::critical('🚨 CRITICAL: Referenced product does not exist in database', [
+                        'product_id' => $productId,
+                        'item_name' => $item['name'] ?? 'Unknown Item',
+                        'payment_id' => isset($payment) ? $payment->getPaymentId() : 'unknown'
+                    ]);
+                    
+                    DB::rollBack();
+                    throw new \Exception("CRITICAL: Product {$productId} does not exist in database");
+                }
+                
+                Log::info('✅ Product validation passed', [
+                    'product_id' => $productId,
+                    'product_name' => $productExists->getName()
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::critical('🚨 CRITICAL: Product validation query failed', [
+                    'product_id' => $productId,
+                    'error' => $e->getMessage()
+                ]);
+                
+                DB::rollBack();
+                throw new \Exception("CRITICAL: Product validation failed for ID {$productId}: " . $e->getMessage());
             }
 
             return [
@@ -675,7 +856,7 @@ class HandleDeunaWebhookUseCase
         $finalTotals['total_discounts'] = 0;
         $finalTotals['free_shipping'] = $freeShipping;
         $finalTotals['free_shipping_threshold'] = $freeShippingThreshold;
-        $finalTotals['tax_rate'] = 15.0;
+        $finalTotals['tax_rate'] = $this->configService->getConfig('payment.taxRate', 15.0);
         $finalTotals['final_total'] = $finalTotals['total']; // 🔧 AGREGADO: para compatibilidad con frontend
 
         Log::info('💰 Totales simples calculados desde monto del pago', [
@@ -740,9 +921,11 @@ class HandleDeunaWebhookUseCase
         $freeShipping = $subtotalWithDiscounts >= $freeShippingThreshold;
         $finalShippingCost = $freeShipping ? 0 : $shippingCost;
 
-        // 🔧 CORREGIDO: Estructura clara de precios
+        // 🔧 CORREGIDO: Estructura clara de precios con IVA dinámico
         $subtotalFinal = $subtotalWithDiscounts + $finalShippingCost; // Base gravable
-        $taxAmount = $subtotalFinal * 0.15; // 15% IVA sobre base gravable
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        $taxAmount = $subtotalFinal * $taxRate; // IVA dinámico sobre base gravable
         $finalTotal = $subtotalFinal + $taxAmount; // Total final
 
         $totals = [
@@ -760,7 +943,7 @@ class HandleDeunaWebhookUseCase
             'total_discounts' => $sellerDiscounts,
             'free_shipping' => $freeShipping,
             'free_shipping_threshold' => $freeShippingThreshold,
-            'tax_rate' => 15.0,
+            'tax_rate' => $this->configService->getConfig('payment.taxRate', 15.0),
         ];
 
         Log::info('💰 Estructura de precios estandarizada', [
@@ -825,9 +1008,11 @@ class HandleDeunaWebhookUseCase
         $freeShipping = $subtotalAfterVolume >= $freeShippingThreshold;
         $finalShippingCost = $freeShipping ? 0 : $shippingCost;
 
-        // 4. Calcular IVA (15% sobre subtotal + envío)
+        // 4. Calcular IVA dinámico (sobre subtotal + envío)
         $taxableAmount = $subtotalAfterVolume + $finalShippingCost;
-        $taxAmount = $taxableAmount * 0.15; // 15% IVA
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        $taxAmount = $taxableAmount * $taxRate; // IVA dinámico
 
         // 5. Total final
         $finalTotal = $subtotalAfterVolume + $finalShippingCost + $taxAmount;
@@ -846,7 +1031,7 @@ class HandleDeunaWebhookUseCase
             'free_shipping' => $freeShipping,
             'free_shipping_threshold' => $freeShippingThreshold,
             'total_quantity' => $totalQuantity,
-            'tax_rate' => 15.0,
+            'tax_rate' => $this->configService->getConfig('payment.taxRate', 15.0),
         ];
 
         Log::info('🧮 Cálculos de pricing completados', [
@@ -947,7 +1132,7 @@ class HandleDeunaWebhookUseCase
                 'total_discounts' => $pricingResult['total_discounts'],
                 'free_shipping' => $pricingResult['free_shipping'],
                 'free_shipping_threshold' => $pricingResult['free_shipping_threshold'],
-                'tax_rate' => 15,
+                'tax_rate' => $this->configService->getConfig('payment.taxRate', 15.0),
             ];
 
             Log::info('✅ DEUNA WEBHOOK: Totales calculados con PricingCalculatorService', [
@@ -1041,11 +1226,27 @@ class HandleDeunaWebhookUseCase
             $itemsBySeller = [];
             foreach ($orderItems as $item) {
                 $sellerId = $item->seller_id;
+                
+                // ✅ LOG: Debug seller_id agrupamiento
+                Log::info('🔍 DEUNA: Agrupando item por seller_id', [
+                    'order_id' => $order->getId(),
+                    'item_id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'seller_id' => $sellerId,
+                    'subtotal' => $item->subtotal
+                ]);
+                
                 if (!isset($itemsBySeller[$sellerId])) {
                     $itemsBySeller[$sellerId] = [];
                 }
                 $itemsBySeller[$sellerId][] = $item;
             }
+            
+            Log::info('✅ DEUNA: Items agrupados por seller', [
+                'order_id' => $order->getId(),
+                'sellers_count' => count($itemsBySeller),
+                'sellers' => array_keys($itemsBySeller)
+            ]);
 
             // Crear un seller_order para cada seller
             foreach ($itemsBySeller as $sellerId => $items) {
@@ -1054,8 +1255,8 @@ class HandleDeunaWebhookUseCase
                 $originalTotal = 0;
                 
                 foreach ($items as $item) {
-                    $sellerTotal += $item->price; // price es el total del item
-                    $originalTotal += $item->original_price;
+                    $sellerTotal += $item->subtotal; // ✅ CORRECCIÓN: usar subtotal (price * quantity)
+                    $originalTotal += $item->original_price * $item->quantity; // ✅ CORRECCIÓN: multiplicar por cantidad
                 }
 
                 // Verificar si ya existe un seller_order para evitar duplicados
@@ -1090,12 +1291,36 @@ class HandleDeunaWebhookUseCase
                     'updated_at' => now(),
                 ]);
 
-                Log::info('✅ Seller order created for Deuna payment', [
+                // ✅ CRÍTICO: Actualizar seller_order_id en la tabla orders
+                \App\Models\Order::where('id', $order->getId())
+                    ->update(['seller_order_id' => $sellerOrder->id]);
+
+                // ✅ CRÍTICO: Actualizar seller_order_id en los OrderItems de este seller
+                \App\Models\OrderItem::where('order_id', $order->getId())
+                    ->where('seller_id', $sellerId)
+                    ->update(['seller_order_id' => $sellerOrder->id]);
+
+                $updatedItemsCount = \App\Models\OrderItem::where('order_id', $order->getId())
+                    ->where('seller_id', $sellerId)
+                    ->count();
+
+                // ✅ CRÍTICO: Crear registro de Shipping para el SellerOrder
+                $this->createShippingRecord($sellerOrder->id, $order);
+
+                Log::info('✅ Seller order created successfully for Deuna payment', [
                     'seller_order_id' => $sellerOrder->id,
                     'order_id' => $order->getId(),
                     'seller_id' => $sellerId,
+                    'order_number' => $sellerOrder->order_number,
                     'total' => $sellerTotal,
-                    'items_count' => count($items)
+                    'original_total' => $originalTotal,
+                    'total_discounts' => $originalTotal - $sellerTotal,
+                    'items_count' => count($items),
+                    'payment_status' => $sellerOrder->payment_status,
+                    'payment_method' => $sellerOrder->payment_method,
+                    'order_updated' => 'seller_order_id set',
+                    'order_items_updated' => $updatedItemsCount,
+                    'shipping_record_created' => true
                 ]);
             }
 
@@ -1106,6 +1331,75 @@ class HandleDeunaWebhookUseCase
                 'trace' => $e->getTraceAsString()
             ]);
             // No lanzar excepción para no fallar el webhook
+        }
+    }
+
+    /**
+     * ✅ NUEVO: Crear registro de Shipping para un SellerOrder
+     */
+    private function createShippingRecord(int $sellerOrderId, $order): void
+    {
+        try {
+            // Verificar si ya existe un shipping para este seller_order
+            $existingShipping = \App\Models\Shipping::where('seller_order_id', $sellerOrderId)->first();
+            if ($existingShipping) {
+                Log::info('Shipping record already exists for seller order', [
+                    'seller_order_id' => $sellerOrderId,
+                    'shipping_id' => $existingShipping->id
+                ]);
+                return;
+            }
+
+            // Generar número de tracking
+            $trackingNumber = \App\Models\Shipping::generateTrackingNumber();
+            
+            // Obtener datos de envío de la orden
+            $shippingData = $order->getShippingData();
+            $currentLocation = null;
+            
+            if ($shippingData && is_array($shippingData)) {
+                $currentLocation = [
+                    'address' => $shippingData['address'] ?? '',
+                    'city' => $shippingData['city'] ?? '',
+                    'state' => $shippingData['state'] ?? '',
+                    'country' => $shippingData['country'] ?? 'Ecuador',
+                    'postal_code' => $shippingData['postal_code'] ?? ''
+                ];
+            }
+
+            // Crear registro de Shipping
+            $shipping = \App\Models\Shipping::create([
+                'seller_order_id' => $sellerOrderId,
+                'tracking_number' => $trackingNumber,
+                'status' => 'processing',
+                'current_location' => $currentLocation,
+                'estimated_delivery' => now()->addDays(3), // 3 días por defecto
+                'carrier_name' => 'Courier Local',
+                'last_updated' => now()
+            ]);
+
+            // Crear evento inicial en el historial
+            $shipping->addHistoryEvent(
+                'processing',
+                $currentLocation,
+                'Pedido recibido y en proceso de preparación',
+                now()
+            );
+
+            Log::info('✅ Shipping record created for seller order', [
+                'seller_order_id' => $sellerOrderId,
+                'shipping_id' => $shipping->id,
+                'tracking_number' => $trackingNumber,
+                'status' => 'processing'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error creating shipping record for seller order', [
+                'seller_order_id' => $sellerOrderId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            // No lanzar excepción para no fallar el proceso principal
         }
     }
 }

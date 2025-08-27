@@ -43,40 +43,41 @@ class EloquentOrderRepository implements OrderRepositoryInterface
             }
         }
 
-        return new OrderEntity(
-            $order->user_id,
-            $order->seller_id,
-            $items,
-            $order->total,
-            $order->status,
-            $order->payment_id,
-            $order->payment_method,
-            $order->payment_status,
-            $shippingData,
-            $order->order_number,
-            $order->id,
-            new \DateTime($order->created_at),
-            new \DateTime($order->updated_at),
+        // ✅ CRÍTICO: Usar reconstitute() para leer desde BD con parámetros en orden correcto
+        return OrderEntity::reconstitute(
+            $order->id,                          // int $id
+            $order->user_id,                     // int $userId
+            $order->seller_id,                   // ?int $sellerId
+            $order->total,                       // float $total
+            $order->status,                      // string $status
+            $order->payment_id,                  // ?string $paymentId
+            $order->payment_method,              // ?string $paymentMethod
+            $order->payment_status,              // ?string $paymentStatus
+            $shippingData,                       // ?array $shippingData
+            $order->order_number,                // string $orderNumber
+            $order->created_at,                  // string $createdAt
+            $order->updated_at,                  // string $updatedAt
+            $items,                              // array $items
             // Campos de descuentos por volumen (si existen)
-            $order->original_total ?? null,
-            $order->volume_discount_savings ?? 0.0,
-            $order->volume_discounts_applied ?? false,
+            $order->original_total ?? null,      // ?float $originalTotal
+            $order->volume_discount_savings ?? 0.0,  // float $volumeDiscountSavings
+            $order->volume_discounts_applied ?? false,  // bool $volumeDiscountsApplied
             // 🔧 AGREGADO: Descuentos del vendedor
-            $order->seller_discount_savings ?? 0.0,
+            $order->seller_discount_savings ?? 0.0,  // float $sellerDiscountSavings
             // Campos de pricing detallado (si existen)
-            $order->subtotal_products ?? 0.0,
-            $order->iva_amount ?? 0.0,
-            $order->shipping_cost ?? 0.0,
-            $order->total_discounts ?? 0.0,
-            $order->free_shipping ?? false,
-            $order->free_shipping_threshold ?? null,
-            $order->pricing_breakdown ? json_decode($order->pricing_breakdown, true) : null,
+            $order->subtotal_products ?? 0.0,        // float $subtotalProducts
+            $order->iva_amount ?? 0.0,                // float $ivaAmount
+            $order->shipping_cost ?? 0.0,             // float $shippingCost
+            $order->total_discounts ?? 0.0,           // float $totalDiscounts
+            $order->free_shipping ?? false,           // bool $freeShipping
+            $order->free_shipping_threshold ?? null,  // ?float $freeShippingThreshold
+            $order->pricing_breakdown ? json_decode($order->pricing_breakdown, true) : null,  // ?array $pricingBreakdown
             // ✅ NUEVOS: Campos de códigos de descuento de feedback
-            $order->feedback_discount_code ?? null,
-            $order->feedback_discount_amount ?? 0.0,
-            $order->feedback_discount_percentage ?? 0.0,
+            $order->feedback_discount_code ?? null,        // ?string $feedbackDiscountCode
+            $order->feedback_discount_amount ?? 0.0,       // float $feedbackDiscountAmount
+            $order->feedback_discount_percentage ?? 0.0,   // float $feedbackDiscountPercentage
             // 🔧 AGREGADO: payment_details
-            $order->payment_details ? json_decode($order->payment_details, true) : null
+            $order->payment_details ? json_decode($order->payment_details, true) : null  // ?array $paymentDetails
         );
     }
 
@@ -243,8 +244,9 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 $itemEntities = $orderEntity->getItems();
                 $items = [];
 
-                // Solo crear order_items si hay items y no es una orden "contenedor"
-                if (! empty($itemEntities) && $orderEntity->getSellerId() !== null) {
+                // ✅ CORREGIDO: Crear OrderItems si hay items, independientemente del seller_id de la orden
+                // Los OrderItems necesitan existir para después ser asociados con SellerOrders
+                if (! empty($itemEntities)) {
                     // Si es una actualización, eliminar items existentes
                     if ($orderEntity->getId()) {
                         OrderItem::where('order_id', $order->id)->delete();
@@ -297,31 +299,8 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 // ✅ REFRESCAR MODELO
                 $order->refresh();
 
-                // ✅ DEVOLVER ENTIDAD ACTUALIZADA CON DESERIALIZACIÓN CORRECTA
-                $savedShippingData = null;
-                if ($order->shipping_data) {
-                    if (is_string($order->shipping_data)) {
-                        $savedShippingData = json_decode($order->shipping_data, true);
-                    } elseif (is_array($order->shipping_data)) {
-                        $savedShippingData = $order->shipping_data;
-                    }
-                }
-
-                return new OrderEntity(
-                    $order->user_id,
-                    $order->seller_id,
-                    $items,
-                    $order->total,
-                    $order->status,
-                    $order->payment_id,
-                    $order->payment_method,
-                    $order->payment_status,
-                    $savedShippingData,
-                    $order->order_number,
-                    $order->id,
-                    new \DateTime($order->created_at),
-                    new \DateTime($order->updated_at)
-                );
+                // ✅ DEVOLVER ENTIDAD ACTUALIZADA USANDO findById() QUE YA ESTÁ CORREGIDO
+                return $this->findById($order->id);
 
             } catch (\Exception $e) {
                 Log::error('❌ Error en EloquentOrderRepository::save()', [
@@ -332,6 +311,114 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 throw $e;
             }
         });
+    }
+
+    /**
+     * ✅ CORRECCIÓN CRÍTICA: Método para DATAFAST que no usa transacciones anidadas
+     * Para evitar conflictos de aislamiento SERIALIZABLE
+     */
+    public function saveWithoutTransaction(OrderEntity $orderEntity): OrderEntity
+    {
+        try {
+            // Crear o encontrar la orden
+            $order = $orderEntity->getId() ? Order::find($orderEntity->getId()) : new Order;
+
+            if (!$order) {
+                $order = new Order;
+            }
+
+            // ✅ CAMPOS BÁSICOS
+            $order->user_id = $orderEntity->getUserId();
+            $order->seller_id = $orderEntity->getSellerId();
+            $order->total = $orderEntity->getTotal();
+            $order->status = $orderEntity->getStatus();
+            $order->payment_id = $orderEntity->getPaymentId();
+            $order->payment_method = $orderEntity->getPaymentMethod();
+            $order->payment_status = $orderEntity->getPaymentStatus();
+
+            // ✅ SERIALIZAR shipping_data como JSON string
+            if ($orderEntity->getShippingData()) {
+                $order->shipping_data = json_encode($orderEntity->getShippingData());
+            } else {
+                $order->shipping_data = null;
+            }
+
+            // ✅ CAMPOS DE PRICING DETALLADO
+            $order->original_total = $orderEntity->getOriginalTotal() ?? 0.0;
+            $order->volume_discount_savings = $orderEntity->getVolumeDiscountSavings() ?? 0.0;
+            $order->volume_discounts_applied = $orderEntity->getVolumeDiscountsApplied() ?? false;
+            // 🔧 CRÍTICO: Agregar seller_discount_savings que faltaba!
+            $order->seller_discount_savings = $orderEntity->getSellerDiscountSavings() ?? 0.0;
+            $order->subtotal_products = $orderEntity->getSubtotalProducts() ?? 0.0;
+            $order->iva_amount = $orderEntity->getIvaAmount() ?? 0.0;
+            $order->shipping_cost = $orderEntity->getShippingCost() ?? 0.0;
+            $order->total_discounts = $orderEntity->getTotalDiscounts() ?? 0.0;
+            $order->free_shipping = $orderEntity->getFreeShipping() ?? false;
+
+            // Guardar orden SIN TRANSACCIÓN
+            $order->save();
+
+            // Crear OrderItems
+            if ($orderEntity->getItems()) {
+                // Eliminar items existentes si es una actualización
+                if ($order->id) {
+                    OrderItem::where('order_id', $order->id)->delete();
+                }
+
+                foreach ($orderEntity->getItems() as $itemData) {
+                    $orderItem = new OrderItem;
+                    $orderItem->order_id = $order->id;
+                    $orderItem->product_id = $itemData['product_id'];
+                    $orderItem->quantity = $itemData['quantity'];
+                    $orderItem->price = $itemData['price'];
+                    $orderItem->subtotal = $itemData['subtotal'] ?? ($itemData['price'] * $itemData['quantity']);
+                    
+                    // ✅ CRÍTICO: Obtener seller_id desde el producto
+                    if ($itemData['product_id']) {
+                        try {
+                            $product = \App\Models\Product::find($itemData['product_id']);
+                            if ($product) {
+                                $orderItem->seller_id = $product->seller_id;
+                            }
+                        } catch (\Exception $e) {
+                            Log::warning('Error obteniendo seller_id del producto', [
+                                'product_id' => $itemData['product_id'],
+                                'error' => $e->getMessage()
+                            ]);
+                        }
+                    }
+
+                    $orderItem->save();
+                }
+            }
+
+            // Refrescar y retornar la entidad
+            $order->refresh();
+            
+            return new OrderEntity(
+                $order->user_id,
+                $order->seller_id,
+                [],  // Items se cargan por separado para simplificar
+                $order->total,
+                $order->status,
+                $order->payment_id,
+                $order->payment_method,
+                $order->payment_status,
+                $order->shipping_data ? json_decode($order->shipping_data, true) : null,
+                $order->order_number,
+                $order->id,
+                new \DateTime($order->created_at),
+                new \DateTime($order->updated_at)
+            );
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error en EloquentOrderRepository::saveWithoutTransaction()', [
+                'error' => $e->getMessage(),
+                'user_id' => $orderEntity->getUserId(),
+                'seller_id' => $orderEntity->getSellerId(),
+            ]);
+            throw $e;
+        }
     }
 
     public function updatePaymentInfo(int $orderId, array $paymentInfo): bool
@@ -1448,19 +1535,34 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 $orderItem->subtotal = $itemData['subtotal'];
                 $orderItem->product_name = $itemData['name'];
 
-                // 🔧 NUEVO: Guardar precio original si está disponible
+                // 🚨 FIX CRÍTICO: Obtener seller_id del producto para que createSellerOrdersForDeuna() funcione
                 if ($itemData['product_id']) {
                     try {
                         $product = \App\Models\Product::find($itemData['product_id']);
                         if ($product) {
                             $orderItem->original_price = $product->price; // Precio original sin descuentos
+                            $orderItem->seller_id = $product->seller_id; // ✅ CRÍTICO: Agregar seller_id
+                        } else {
+                            Log::error('❌ DEUNA WEBHOOK: Product not found when creating order items', [
+                                'product_id' => $itemData['product_id'],
+                                'order_id' => $order->id
+                            ]);
+                            $orderItem->original_price = $itemData['price'];
+                            $orderItem->seller_id = null; // Fallback a null si no encontramos el producto
                         }
                     } catch (\Exception $e) {
+                        Log::error('❌ DEUNA WEBHOOK: Error getting product seller_id', [
+                            'product_id' => $itemData['product_id'],
+                            'error' => $e->getMessage(),
+                            'order_id' => $order->id
+                        ]);
                         // Si falla, usar el precio del item como original
                         $orderItem->original_price = $itemData['price'];
+                        $orderItem->seller_id = null; // Fallback a null
                     }
                 } else {
                     $orderItem->original_price = $itemData['price'];
+                    $orderItem->seller_id = null; // No hay producto, no hay seller
                 }
 
                 $orderItem->save();

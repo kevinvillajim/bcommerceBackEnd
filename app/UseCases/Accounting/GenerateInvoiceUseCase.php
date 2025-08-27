@@ -11,6 +11,7 @@ use App\Domain\Repositories\AccountingRepositoryInterface;
 use App\Domain\Repositories\InvoiceRepositoryInterface;
 use App\Domain\Repositories\OrderRepositoryInterface;
 use App\Domain\Repositories\ProductRepositoryInterface;
+use App\Services\ConfigurationService;
 use DateTime;
 
 class GenerateInvoiceUseCase
@@ -24,19 +25,23 @@ class GenerateInvoiceUseCase
     private $productRepository;
 
     private $sriService;
+    
+    private ConfigurationService $configService;
 
     public function __construct(
         InvoiceRepositoryInterface $invoiceRepository,
         AccountingRepositoryInterface $accountingRepository,
         OrderRepositoryInterface $orderRepository,
         ProductRepositoryInterface $productRepository,
-        SriServiceInterface $sriService
+        SriServiceInterface $sriService,
+        ConfigurationService $configService
     ) {
         $this->invoiceRepository = $invoiceRepository;
         $this->accountingRepository = $accountingRepository;
         $this->orderRepository = $orderRepository;
         $this->productRepository = $productRepository;
         $this->sriService = $sriService;
+        $this->configService = $configService;
     }
 
     public function execute(int $orderId): InvoiceEntity
@@ -87,10 +92,16 @@ class GenerateInvoiceUseCase
             isPosted: false
         );
 
-        // Calcular los impuestos
+        // Calcular los impuestos dinámicamente
         $totalAmount = $order->getTotal();
-        // Siempre calcular el impuesto como 15% del total
-        $taxAmount = $totalAmount * 0.15; // 15% IVA por defecto
+        // ✅ COMPLETAMENTE DINÁMICO: Sin fallback hardcoded
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate');
+        
+        if ($taxRatePercentage === null) {
+            throw new \Exception('Tax rate no configurado en BD - Configuración requerida para facturación');
+        }
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        $taxAmount = $totalAmount * $taxRate; // IVA dinámico
         $subtotal = $totalAmount - $taxAmount;
 
         // Asiento de débito a Cuentas por Cobrar (Activo)
@@ -129,8 +140,15 @@ class GenerateInvoiceUseCase
         $sellerId = method_exists($order, 'getSellerId') && $order->getSellerId() ? $order->getSellerId() : $userId;
         $total = $order->getTotal();
 
-        // Calculamos tax y subtotal basados en el total
-        $tax = $total * 0.15; // 15% IVA
+        // Calculamos tax y subtotal basados en el total - IVA dinámico
+        // ✅ COMPLETAMENTE DINÁMICO: Sin fallback hardcoded
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate');
+        
+        if ($taxRatePercentage === null) {
+            throw new \Exception('Tax rate no configurado en BD - Configuración requerida para facturación');
+        }
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        $tax = $total * $taxRate; // IVA dinámico
         $subtotal = $total - $tax;
 
         // Generar un número de factura único
@@ -154,7 +172,7 @@ class GenerateInvoiceUseCase
         foreach ($order->getItems() as $orderItem) {
             $product = $this->productRepository->findById($orderItem->product_id);
 
-            $taxRate = 15; // IVA estándar en Ecuador
+            $taxRate = $this->configService->getConfig('payment.taxRate', 15.0); // IVA dinámico desde configuración
             $unitPrice = $orderItem->price;
             $quantity = $orderItem->quantity;
             $discount = $orderItem->discount ?? 0;

@@ -7,10 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\Seller;
 use App\Models\User;
+use App\Services\Mail\MailManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 
 class AdminUserController extends Controller
 {
@@ -209,22 +211,50 @@ class AdminUserController extends Controller
                 ], 404);
             }
 
-            // Enviar correo de restablecimiento de contraseña
-            $status = Password::sendResetLink(['email' => $user->email]);
+            // Generar token de restablecimiento
+            $token = Str::random(60);
+            
+            // Guardar token en la base de datos
+            DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => $user->email],
+                [
+                    'email' => $user->email,
+                    'token' => hash('sha256', $token),
+                    'created_at' => now()
+                ]
+            );
 
-            if ($status === Password::RESET_LINK_SENT) {
+            // Usar el MailManager directamente para enviar el correo
+            $mailManager = app(MailManager::class);
+            
+            // Enviar correo de restablecimiento
+            $emailSent = $mailManager->sendPasswordResetEmail($user, $token);
+
+            if ($emailSent) {
+                Log::info('Password reset email sent by admin', [
+                    'admin_id' => auth()->user()->id,
+                    'user_id' => $user->id,
+                    'user_email' => $user->email
+                ]);
+                
                 return response()->json([
                     'success' => true,
                     'message' => 'Correo de restablecimiento de contraseña enviado correctamente',
                 ]);
             } else {
+                Log::error('Failed to send password reset email', [
+                    'user_id' => $id,
+                    'user_email' => $user->email
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'Error al enviar correo de restablecimiento de contraseña',
                 ], 500);
             }
         } catch (\Exception $e) {
-            Log::error('Error al enviar correo de restablecimiento: '.$e->getMessage(), [
+            Log::error('Exception in AdminUserController@resetPassword', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'user_id' => $id,
             ]);
@@ -232,7 +262,7 @@ class AdminUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al enviar correo de restablecimiento de contraseña',
-                'error' => $e->getMessage(),
+                'error' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor',
             ], 500);
         }
     }

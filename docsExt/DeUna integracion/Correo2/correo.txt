@@ -1,0 +1,53 @@
+Estimados, buenas tardes ¡Esperando que se encuentren bien!
+
+ 
+
+Para avanzar con el proceso de integración y uso de las soluciones de Pago DEUNA Negocios compartimos adjunto a este correo la documentación y próximos pasos que facilitarán el proceso de pruebas de las APIs mediante Postman e iniciar la integración.
+
+ 
+
+Los documentos adjuntos contienen:
+
+ 
+
+1. Guía Rápida Postman: Instrucciones generales para habilitar y usar el ambiente de test Postman. Las guías B1, B2, B3, B4 contiene descripción técnica por API. La guía B5 contiene el listado de posibles respuestas.
+
+2. Archivo JSON: Contiene la colección Postman de APIs para la gestión de pagos en ambiente de pruebas.
+
+3. Requisitos de Integración: La guía C contiene información de sistema necesario para tener conexión exitosa con DEUNA.
+
+ 
+
+Les envío adjunto la sucursal y caja que van a ser utilizados durante el periodo de prueba.
+
+CREDENCIALES:
+
+x-api-key: d873c8dd29bd48fdba9b8c82a94bce6a
+
+x-api-secret: 6675cf597860464ba845beb9cddac864
+
+URLs de ambiente de PRUEBAS:
+
+ 
+
+Https://apis-merchant.qa.deunalab.com/merchant/v1/payment/request 
+
+Https://apis-merchant.qa.deunalab.com/merchant/v1/payment/void  
+
+Https://apis-merchant.qa.deunalab.com/merchant/v1/payment/cancel 
+
+Https://apis-merchant.qa.deunalab.com/merchant/v1/payment/info 
+
+ 
+
+En caso de presentar alguna consulta no dude en contactarnos
+
+ 
+
+Quedamos atentos a sus comentarios
+
+ 
+
+Saludos cordiales,
+
+ 

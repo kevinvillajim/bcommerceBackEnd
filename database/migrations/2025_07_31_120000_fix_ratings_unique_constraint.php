@@ -15,18 +15,15 @@ return new class extends Migration
         // No intentar eliminar constraints que pueden no existir
 
         Schema::table('ratings', function (Blueprint $table) {
-            // Verificar si el constraint ya existe usando raw SQL
-            $indexExists = \DB::select("
-                SELECT COUNT(*) as count 
-                FROM information_schema.statistics 
-                WHERE table_schema = DATABASE() 
-                AND table_name = 'ratings' 
-                AND index_name = 'unique_rating_with_product'
-            ");
-
-            if ($indexExists[0]->count == 0) {
-                // Solo crear el índice si no existe
+            // Verificar si el constraint ya existe de forma compatible con SQLite y MySQL
+            try {
+                // Intentar crear el índice, si ya existe fallará silenciosamente
                 $table->unique(['user_id', 'seller_id', 'order_id', 'product_id', 'type'], 'unique_rating_with_product');
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Si el índice ya existe, continúa silenciosamente
+                if (!str_contains($e->getMessage(), 'Duplicate key name') && !str_contains($e->getMessage(), 'already exists')) {
+                    throw $e;
+                }
             }
         });
     }

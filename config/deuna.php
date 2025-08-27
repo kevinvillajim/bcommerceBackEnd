@@ -12,7 +12,7 @@ return [
     |
     */
 
-    'api_url' => env('DEUNA_API_URL', 'https://apis-merchant.qa.deunalab.com'),
+    'api_url' => env('DEUNA_API_URL', 'https://apim-qa-deuna.azure-api.net'),
     'api_key' => env('DEUNA_API_KEY'),
     'api_secret' => env('DEUNA_API_SECRET'),
     'webhook_secret' => env('DEUNA_WEBHOOK_SECRET'),

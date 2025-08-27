@@ -208,31 +208,40 @@ class DeunaWebhookController extends Controller
                 ], 500);
             }
 
-            // Create realistic webhook data that matches Deuna's format
+            // 🚨 CRITICAL FIX: Use REAL payment data to simulate exact DeUna webhook
             $webhookData = [
                 'idTransaction' => $paymentId,
-                'status' => 'SUCCESS', // Deuna uses 'SUCCESS' for completed payments
+                'status' => 'SUCCESS', // DeUna uses 'SUCCESS' for completed payments
                 'event' => 'payment.completed',
-                'amount' => $request->input('amount', 100.00),
-                'currency' => $request->input('currency', 'USD'),
-                'customerEmail' => $request->input('customer_email', 'test@example.com'),
-                'customerFullName' => $request->input('customer_name', 'Test Customer'),
-                'customerIdentification' => '1234567890',
+                'amount' => $existingPayment->amount, // ✅ USE REAL AMOUNT
+                'currency' => $existingPayment->currency ?? 'USD', // ✅ USE REAL CURRENCY
+                'customerEmail' => $existingPayment->customer['email'] ?? 'test@example.com', // ✅ REAL CUSTOMER
+                'customerFullName' => $existingPayment->customer['name'] ?? 'Test Customer', // ✅ REAL NAME  
+                'customerIdentification' => $existingPayment->customer['identification'] ?? '1234567890',
                 'transferNumber' => 'SIM-'.time(),
-                'branchId' => 'TEST_BRANCH',
-                'posId' => 'TEST_POS',
+                'branchId' => config('deuna.point_of_sale'), // ✅ USE REAL BRANCH
+                'posId' => config('deuna.point_of_sale'), // ✅ USE REAL POS
                 'timestamp' => now()->toISOString(),
                 'data' => [
                     'payment_id' => $paymentId,
                     'status' => 'completed',
-                    'transaction_id' => 'TXN-'.time(),
+                    'transaction_id' => 'TXN-SIM-'.time(),
                 ],
-                // Include the original payment items with product_id
+                // ✅ CRITICAL: Include the REAL payment items with product_id
                 'items' => $existingPayment->items ?: [],
                 // Metadata to identify this as a simulation
                 'simulation' => true,
                 'simulated_at' => now()->toISOString(),
             ];
+
+            Log::info('🔧 Webhook data prepared for simulation', [
+                'payment_id' => $paymentId,
+                'amount' => $webhookData['amount'],
+                'currency' => $webhookData['currency'],
+                'customer_email' => $webhookData['customerEmail'],
+                'items_count' => count($webhookData['items']),
+                'has_product_ids' => !empty($webhookData['items']) ? array_column($webhookData['items'], 'product_id') : 'no_items',
+            ]);
 
             Log::info('🚀 Processing simulated webhook data', [
                 'payment_id' => $paymentId,

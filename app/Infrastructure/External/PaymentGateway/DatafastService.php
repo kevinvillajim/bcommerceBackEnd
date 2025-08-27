@@ -3,6 +3,7 @@
 namespace App\Infrastructure\External\PaymentGateway;
 
 use App\Domain\Interfaces\PaymentGatewayInterface;
+use App\Services\ConfigurationService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,9 +18,12 @@ class DatafastService implements PaymentGatewayInterface
     private bool $isProduction;
 
     private bool $usePhase2; // Control para cambiar entre Fase 1 y Fase 2
+    
+    private ConfigurationService $configService;
 
-    public function __construct()
+    public function __construct(ConfigurationService $configService)
     {
+        $this->configService = $configService;
         $this->isProduction = config('app.env') === 'production';
         $this->usePhase2 = config('services.datafast.use_phase2', false); // Por defecto Fase 1
 
@@ -33,6 +37,19 @@ class DatafastService implements PaymentGatewayInterface
             $this->baseUrl = config('services.datafast.test_url');
             $this->entityId = config('services.datafast.test.entity_id');
             $this->authorization = config('services.datafast.test.authorization');
+        }
+
+        // Validar que las configuraciones críticas no sean null
+        if (empty($this->baseUrl)) {
+            throw new \Exception('Datafast Base URL no configurada. Verifique las variables de entorno DATAFAST_'.($this->isProduction ? 'PRODUCTION' : 'TEST').'_URL');
+        }
+
+        if (empty($this->entityId)) {
+            throw new \Exception('Datafast Entity ID no configurado. Verifique las variables de entorno DATAFAST_'.($this->isProduction ? 'PRODUCTION' : 'TEST').'_ENTITY_ID');
+        }
+
+        if (empty($this->authorization)) {
+            throw new \Exception('Datafast Authorization no configurada. Verifique las variables de entorno DATAFAST_'.($this->isProduction ? 'PRODUCTION' : 'TEST').'_AUTHORIZATION');
         }
     }
 
@@ -166,9 +183,15 @@ class DatafastService implements PaymentGatewayInterface
         // Validar datos requeridos para Fase 2
         $this->validatePhase2Data($orderData);
 
-        // Calcular impuestos (ejemplo: IVA 15%)
+        // Calcular impuestos dinámicamente (IVA Ecuador)
         $amount = $orderData['amount'];
-        $taxRate = 0.15; // 15% IVA
+        // ✅ COMPLETAMENTE DINÁMICO: Sin fallback hardcoded en gateway de pago
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate');
+        
+        if ($taxRatePercentage === null) {
+            throw new \Exception('Tax rate no configurado en BD - Requerido para procesamiento de pagos');
+        }
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
         $baseImponible = round($amount / (1 + $taxRate), 2); // Base sin IVA
         $taxAmount = round($amount - $baseImponible, 2); // IVA calculado
         $base0 = 0.00; // Productos exentos de impuestos
@@ -211,8 +234,8 @@ class DatafastService implements PaymentGatewayInterface
             'billing.street1' => $this->sanitizeString($orderData['billing']['address'] ?? 'Dirección de prueba', 100),
             'billing.country' => $this->formatCountryCode($orderData['billing']['country'] ?? 'EC'),
 
-            // Modo de prueba (solo en ambiente de pruebas)
-            'testMode' => 'EXTERNAL',
+            // Modo de prueba (solo en ambiente de desarrollo, no en producción)
+            // 'testMode' => 'EXTERNAL', // Comentado para producción
 
             // URL de resultado para redirección después del pago
             'shopperResultUrl' => config('app.url').'/datafast-result',

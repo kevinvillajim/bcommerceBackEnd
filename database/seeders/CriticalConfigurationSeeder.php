@@ -41,7 +41,7 @@ class CriticalConfigurationSeeder extends Seeder
             ['key' => 'email.smtpHost', 'value' => 'mail.comersia.app', 'description' => 'Servidor SMTP para envío de correos', 'category' => 'email', 'type' => 'text'],
             ['key' => 'email.smtpPort', 'value' => '465', 'description' => 'Puerto SMTP', 'category' => 'email', 'type' => 'number'],
             ['key' => 'email.smtpUsername', 'value' => 'info@comersia.app', 'description' => 'Usuario SMTP', 'category' => 'email', 'type' => 'text'],
-            ['key' => 'email.smtpPassword', 'value' => '5uO!zkxrH*s!Ty', 'description' => 'Contraseña SMTP', 'category' => 'email', 'type' => 'password'],
+            ['key' => 'email.smtpPassword', 'value' => env('MAIL_PASSWORD', ''), 'description' => 'Contraseña SMTP', 'category' => 'email', 'type' => 'password'],
             ['key' => 'email.smtpEncryption', 'value' => 'ssl', 'description' => 'Cifrado SMTP', 'category' => 'email', 'type' => 'select'],
             ['key' => 'email.senderName', 'value' => 'Comersia App', 'description' => 'Nombre que aparecerá como remitente de correos', 'category' => 'email', 'type' => 'text'],
             ['key' => 'email.senderEmail', 'value' => 'info@comersia.app', 'description' => 'Dirección desde la que se enviarán los correos', 'category' => 'email', 'type' => 'email'],
@@ -68,7 +68,7 @@ class CriticalConfigurationSeeder extends Seeder
             // Payment
             ['key' => 'payment.currencySymbol', 'value' => '$', 'description' => 'Símbolo de moneda', 'category' => 'payment', 'type' => 'text'],
             ['key' => 'payment.currencyCode', 'value' => 'USD', 'description' => 'Código de moneda', 'category' => 'payment', 'type' => 'text'],
-            ['key' => 'payment.taxRate', 'value' => '12', 'description' => 'Tasa de impuesto (%)', 'category' => 'payment', 'type' => 'number'],
+            ['key' => 'payment.taxRate', 'value' => '15', 'description' => 'Tasa de impuesto (%) - IVA Ecuador', 'category' => 'payment', 'type' => 'number'],
             
             // Volume Discounts
             ['key' => 'volume_discounts.enabled', 'value' => 'true', 'description' => 'Habilitar descuentos por volumen en toda la tienda', 'category' => 'volume_discounts', 'type' => 'boolean'],

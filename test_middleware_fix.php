@@ -1,71 +1,51 @@
 <?php
 
-/**
- * Script rápido para limpiar cache y probar la API
- * Ejecutar desde backend: php test_middleware_fix.php
- */
-echo "🔧 Limpiando cache para aplicar cambios al middleware...\n";
+echo "🔧 TESTING MIDDLEWARE FIXES DEPLOYMENT\n";
+echo "=" . str_repeat("=", 50) . "\n";
 
-$commands = [
-    'php artisan config:clear',
-    'php artisan route:clear',
-    'composer dump-autoload --optimize',
-];
+// Check if our changes are actually in the deployed code
+$jwtMiddlewarePath = __DIR__ . '/app/Http/Middleware/JwtMiddleware.php';
 
-foreach ($commands as $command) {
-    echo "Ejecutando: $command\n";
-    $output = [];
-    $returnCode = 0;
-    exec($command.' 2>&1', $output, $returnCode);
-
-    if ($returnCode === 0) {
-        echo "✅ Completado\n";
+if (file_exists($jwtMiddlewarePath)) {
+    $content = file_get_contents($jwtMiddlewarePath);
+    
+    echo "📁 JwtMiddleware file found: ✅\n";
+    
+    // Check for our CORS fix
+    if (strpos($content, "CORS FIX: Allow OPTIONS requests") !== false) {
+        echo "✅ CORS FIX: OPTIONS request handling found\n";
     } else {
-        echo "⚠️ Warning - código: $returnCode\n";
-        if (! empty($output)) {
-            echo '   '.implode("\n   ", $output)."\n";
+        echo "❌ CORS FIX: OPTIONS request handling NOT FOUND\n";
+    }
+    
+    // Check for our user resolver fix
+    if (strpos($content, "setUserResolver") !== false) {
+        echo "✅ USER FIX: setUserResolver found\n";
+    } else {
+        echo "❌ USER FIX: setUserResolver NOT FOUND\n";
+        
+        // Check if old method is still being used
+        if (strpos($content, "request->merge(['authenticated_user'") !== false) {
+            echo "⚠️  OLD METHOD: Still using merge() method\n";
         }
     }
-}
-
-echo "\n🧪 Probando API endpoint...\n";
-
-// Probar la API directamente
-$url = 'http://127.0.0.1:8000/api/products/51';
-echo "Probando: $url\n";
-
-$context = stream_context_create([
-    'http' => [
-        'method' => 'GET',
-        'header' => 'Accept: application/json',
-        'timeout' => 10,
-    ],
-]);
-
-$response = @file_get_contents($url, false, $context);
-$httpCode = 0;
-
-if (isset($http_response_header)) {
-    foreach ($http_response_header as $header) {
-        if (preg_match('/HTTP\/\d\.\d\s+(\d+)/', $header, $matches)) {
-            $httpCode = (int) $matches[1];
-            break;
-        }
+    
+    // Show the handle method
+    echo "\n📋 Current JwtMiddleware handle method:\n";
+    preg_match('/public function handle\(.*?\n    \}/s', $content, $matches);
+    if ($matches[0]) {
+        echo "```php\n" . trim($matches[0]) . "\n```\n";
     }
-}
-
-if ($response !== false && $httpCode === 200) {
-    echo "✅ API funciona correctamente - HTTP $httpCode\n";
-    $data = json_decode($response, true);
-    if (isset($data['data']['name'])) {
-        echo '✅ Producto encontrado: '.$data['data']['name']."\n";
-    }
+    
 } else {
-    echo "❌ API aún tiene problemas - HTTP $httpCode\n";
-    if ($response) {
-        echo 'Respuesta: '.substr($response, 0, 200)."...\n";
-    }
+    echo "❌ JwtMiddleware file NOT FOUND at: $jwtMiddlewarePath\n";
 }
 
-echo "\n💡 Revisa los logs del servidor para ver los mensajes de [TRACK-DEBUG]\n";
-echo "💡 Si funciona, ve a http://localhost:3000/products/51 en el navegador\n";
+echo "\n💡 DEPLOYMENT VERIFICATION:\n";
+echo "If any fixes show as NOT FOUND, the production server needs to be updated with:\n";
+echo "1. Latest JwtMiddleware.php changes\n";
+echo "2. Laravel route cache cleared (php artisan route:clear)\n";
+echo "3. Application cache cleared (php artisan cache:clear)\n";
+
+echo "\n" . str_repeat("=", 60) . "\n";
+echo "🏁 MIDDLEWARE DEPLOYMENT TEST COMPLETED\n";

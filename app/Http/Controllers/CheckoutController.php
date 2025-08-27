@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\DatafastController;
 use App\Http\Requests\CheckoutRequest;
 use App\UseCases\Checkout\ProcessCheckoutUseCase;
 use Illuminate\Http\Request;
@@ -45,6 +46,32 @@ class CheckoutController extends Controller
                 'items' => $items,
                 'calculated_totals' => $calculatedTotals,
             ]);
+
+            // 🚨 CORRECCIÓN CRÍTICA: Para DATAFAST, delegar al DatafastController
+            // para evitar conflictos de transacción SERIALIZABLE
+            if ($validated['payment']['method'] === 'datafast') {
+                Log::info('🔄 Delegando checkout DATAFAST al DatafastController especializado', [
+                    'calculated_totals' => $calculatedTotals,
+                    'items' => $items
+                ]);
+                
+                // ✅ TRANSFORMAR datos del cálculo centralizado al formato que espera DatafastController
+                $transformedData = array_merge($request->all(), [
+                    'total' => $calculatedTotals['total'],
+                    'subtotal' => $calculatedTotals['subtotal'], 
+                    'shipping_cost' => $calculatedTotals['shipping'],
+                    'tax' => $calculatedTotals['tax'],
+                    'items' => $items, // Usar items validados
+                ]);
+                
+                // Crear nuevo request con datos transformados
+                $transformedRequest = new Request($transformedData);
+                $transformedRequest->setUserResolver($request->getUserResolver());
+                
+                // Crear instancia del DatafastController y delegar
+                $datafastController = app(DatafastController::class);
+                return $datafastController->createCheckout($transformedRequest);
+            }
 
             // Ejecutar el caso de uso con items validados y totales calculados
             $result = $this->processCheckoutUseCase->execute(

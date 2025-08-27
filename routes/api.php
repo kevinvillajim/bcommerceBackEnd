@@ -347,7 +347,7 @@ Route::middleware('jwt.auth')->group(function () {
     | Checkout & Payment Routes
     |--------------------------------------------------------------------------
     */
-    Route::post('/checkout', [CheckoutController::class, 'process']);
+    Route::post('/checkout', [CheckoutController::class, 'process'])->middleware('throttle:checkout');
     
     // 🧮 Pricing Calculator Routes - Centralized calculations
     Route::post('/calculate-totals', [PricingController::class, 'calculateTotals']);
@@ -497,10 +497,10 @@ Route::middleware('jwt.auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::prefix('datafast')->group(function () {
-        Route::post('/create-checkout', [DatafastController::class, 'createCheckout']);
-        Route::post('/verify-payment', [DatafastController::class, 'verifyPayment']);
+        Route::post('/create-checkout', [DatafastController::class, 'createCheckout'])->middleware('throttle:payment');
+        Route::post('/verify-payment', [DatafastController::class, 'verifyPayment'])->middleware('throttle:payment');
     });
-    Route::post('/datafast/webhook', [DatafastController::class, 'webhook']);
+    Route::post('/datafast/webhook', [DatafastController::class, 'webhook'])->middleware('throttle:webhook');
     // Ruta de prueba (solo en desarrollo)
     if (config('app.debug')) {
         Route::get('/test', function () {
@@ -847,46 +847,6 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::delete('/admins/{userId}', [AdminController::class, 'removeAdmin']);
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | Configuraciones del sistema
-    |--------------------------------------------------------------------------
-    */
-    Route::prefix('configurations')->group(function () {
-        // Rutas específicas para configuraciones de ratings
-        Route::get('/ratings', [ConfigurationController::class, 'getRatingConfigs']);
-        Route::post('/ratings', [ConfigurationController::class, 'updateRatingConfigs']);
-
-        // Rutas específicas para configuraciones de moderación
-        Route::get('/moderation', [ConfigurationController::class, 'getModerationConfigs']);
-        Route::post('/moderation', [ConfigurationController::class, 'updateModerationConfigs']);
-
-        // Rutas específicas para configuraciones de envío
-        Route::get('/shipping', [ConfigurationController::class, 'getShippingConfigs']);
-        Route::post('/shipping', [ConfigurationController::class, 'updateShippingConfigs']);
-
-        // Rutas específicas para configuraciones de desarrollo
-        Route::get('/development', [ConfigurationController::class, 'getDevelopmentConfigs']);
-        Route::post('/development', [ConfigurationController::class, 'updateDevelopmentConfigs']);
-
-        // Rutas específicas para configuraciones de correo
-        Route::get('/mail', [App\Http\Controllers\Auth\EmailVerificationController::class, 'getMailConfiguration']);
-        Route::post('/mail', [App\Http\Controllers\Auth\EmailVerificationController::class, 'updateMailConfiguration']);
-        Route::post('/mail/test', [App\Http\Controllers\Auth\EmailVerificationController::class, 'testMailConfiguration']);
-        Route::post('/mail/send-custom', [App\Http\Controllers\Auth\EmailVerificationController::class, 'sendCustomEmail']);
-
-        // Rutas para configuraciones por categoría
-        Route::get('/category', [ConfigurationController::class, 'getByCategory']);
-        Route::post('/category', [ConfigurationController::class, 'updateByCategory']);
-
-        // Ruta para reglas de validación de contraseñas
-        Route::get('/password-validation-rules', [ConfigurationController::class, 'getPasswordValidationRules']);
-
-        // Rutas genericas
-        Route::get('/', [ConfigurationController::class, 'index']);
-        Route::get('/{key}', [ConfigurationController::class, 'show']);
-        Route::post('/update', [ConfigurationController::class, 'update']);
-    });
 
     /*
     |--------------------------------------------------------------------------
@@ -952,6 +912,17 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | Tax Configuration Routes - Admin Only
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('tax')->group(function () {
+        Route::get('/configuration', [App\Http\Controllers\Admin\TaxConfigurationController::class, 'getConfiguration']);
+        Route::post('/configuration', [App\Http\Controllers\Admin\TaxConfigurationController::class, 'updateConfiguration']);
+        Route::post('/calculate', [App\Http\Controllers\Admin\TaxConfigurationController::class, 'calculateTax']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Admin Discount Codes Management
     |--------------------------------------------------------------------------
     */
@@ -997,6 +968,51 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::get('/{id}', [AdminLogController::class, 'show']);
         Route::delete('/{id}', [AdminLogController::class, 'destroy']);
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Configuraciones del sistema
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('configurations')->group(function () {
+        // Rutas específicas para configuraciones de ratings
+        Route::get('/ratings', [ConfigurationController::class, 'getRatingConfigs']);
+        Route::post('/ratings', [ConfigurationController::class, 'updateRatingConfigs']);
+
+        // Rutas específicas para configuraciones de moderación
+        Route::get('/moderation', [ConfigurationController::class, 'getModerationConfigs']);
+        Route::post('/moderation', [ConfigurationController::class, 'updateModerationConfigs']);
+
+        // Rutas específicas para configuraciones de envío
+        Route::get('/shipping', [ConfigurationController::class, 'getShippingConfigs']);
+        Route::post('/shipping', [ConfigurationController::class, 'updateShippingConfigs']);
+
+        // Rutas específicas para configuraciones de desarrollo
+        Route::get('/development', [ConfigurationController::class, 'getDevelopmentConfigs']);
+        Route::post('/development', [ConfigurationController::class, 'updateDevelopmentConfigs']);
+
+        // Rutas específicas para configuraciones de correo
+        Route::get('/mail', [App\Http\Controllers\Auth\EmailVerificationController::class, 'getMailConfiguration']);
+        Route::post('/mail', [App\Http\Controllers\Auth\EmailVerificationController::class, 'updateMailConfiguration']);
+        Route::post('/mail/test', [App\Http\Controllers\Auth\EmailVerificationController::class, 'testMailConfiguration']);
+        Route::post('/mail/send-custom', [App\Http\Controllers\Auth\EmailVerificationController::class, 'sendCustomEmail']);
+        
+        // Mail testing and debugging routes (admin only)
+        Route::post('/mail/debug-test', [App\Http\Controllers\Admin\MailTestController::class, 'testMail']);
+        Route::get('/mail/status', [App\Http\Controllers\Admin\MailTestController::class, 'getStatus']);
+
+        // Rutas para configuraciones por categoría
+        Route::get('/category', [ConfigurationController::class, 'getByCategory']);
+        Route::post('/category', [ConfigurationController::class, 'updateByCategory']);
+
+        // Ruta para reglas de validación de contraseñas
+        Route::get('/password-validation-rules', [ConfigurationController::class, 'getPasswordValidationRules']);
+
+        // Rutas genericas
+        Route::get('/', [ConfigurationController::class, 'index']);
+        Route::get('/{key}', [ConfigurationController::class, 'show']);
+        Route::post('/update', [ConfigurationController::class, 'update']);
+    });
 });
 
 /*
@@ -1033,7 +1049,7 @@ Route::middleware(['jwt.auth'])->prefix('deuna')->group(function () {
 });
 
 // DeUna Webhook Routes - No authentication required (validated by middleware)
-Route::middleware(['deuna.webhook'])->prefix('webhooks/deuna')->name('deuna.webhook.')->group(function () {
+Route::middleware(['deuna.webhook', 'throttle:webhook'])->prefix('webhooks/deuna')->name('deuna.webhook.')->group(function () {
     // Main webhook endpoint for payment status updates
     Route::post('/payment-status', [DeunaWebhookController::class, 'handlePaymentStatus'])->name('payment-status');
 
@@ -1061,3 +1077,9 @@ Route::get('/configurations/platform-commission-public', [App\Http\Controllers\A
 
 // Configuración de distribución de envío - Público para sellers
 Route::get('/configurations/shipping-distribution-public', [App\Http\Controllers\Admin\ShippingDistributionController::class, 'getConfiguration']);
+
+// Configuración de impuestos - Público para que sellers y frontend puedan acceder
+Route::get('/configurations/tax-public', [App\Http\Controllers\Admin\TaxConfigurationController::class, 'getConfiguration']);
+
+// 🎯 ENDPOINT UNIFICADO: Todas las configuraciones en una sola llamada (Optimización de rendimiento)
+Route::get('/configurations/unified', [App\Http\Controllers\Admin\UnifiedConfigurationController::class, 'getUnifiedConfiguration']);

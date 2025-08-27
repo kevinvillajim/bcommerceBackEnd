@@ -58,15 +58,15 @@ return [
         'use_phase2' => env('DATAFAST_USE_PHASE2', true),
 
         // URLs de ambiente (Según sitio oficial developers.datafast.com.ec)
-        'test_url' => env('DATAFAST_TEST_URL', 'https://test.oppwa.com'),
+        'test_url' => env('DATAFAST_TEST_URL', 'https://eu-test.oppwa.com'),
         'production_url' => env('DATAFAST_PRODUCTION_URL', 'https://oppwa.com'),
 
-        // Configuración de pruebas (Fase 1)
+        // Configuración de pruebas (Fase 1) - REMOVED HARDCODED VALUES FOR SECURITY
         'test' => [
-            'entity_id' => env('DATAFAST_TEST_ENTITY_ID', '8a829418533cf31d01533d06f2ee06fa'),
-            'authorization' => env('DATAFAST_TEST_AUTHORIZATION', 'Bearer OGE4Mjk0MTg1MzNjZjMxZDAxNTMzZDA2ZmQwNDA3NDh8WHQ3RjIyUUVOWA=='),
-            'mid' => env('DATAFAST_TEST_MID', '1000000406'),
-            'tid' => env('DATAFAST_TEST_TID', 'PD100406'),
+            'entity_id' => env('DATAFAST_TEST_ENTITY_ID'),
+            'authorization' => env('DATAFAST_TEST_AUTHORIZATION'),
+            'mid' => env('DATAFAST_TEST_MID'),
+            'tid' => env('DATAFAST_TEST_TID'),
         ],
 
         // Configuración de producción (cambiar cuando se tengan los datos reales)

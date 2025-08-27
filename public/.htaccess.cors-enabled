@@ -1,0 +1,55 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # ===============================================
+    # 🌐 CORS Configuration for BCommerce
+    # ===============================================
+    # ONLY USE IF Laravel CORS is not working properly
+    <IfModule mod_headers.c>
+        # Handle preflight OPTIONS requests
+        RewriteCond %{REQUEST_METHOD} OPTIONS
+        RewriteRule ^(.*)$ $1 [R=200,L]
+        
+        # Set CORS headers for specific domains (SECURE)
+        SetEnvIf Origin "^https://comersia\.app$" CORS_ORIGIN=https://comersia.app
+        SetEnvIf Origin "^https://www\.comersia\.app$" CORS_ORIGIN=https://www.comersia.app
+        SetEnvIf Origin "^http://localhost:3000$" CORS_ORIGIN=http://localhost:3000
+        SetEnvIf Origin "^http://127\.0\.0\.1:3000$" CORS_ORIGIN=http://127.0.0.1:3000
+        SetEnvIf Origin "^http://localhost:3001$" CORS_ORIGIN=http://localhost:3001
+        SetEnvIf Origin "^http://127\.0\.0\.1:3001$" CORS_ORIGIN=http://127.0.0.1:3001
+        
+        Header always set Access-Control-Allow-Origin %{CORS_ORIGIN}e env=CORS_ORIGIN
+        Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        Header always set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token, X-Socket-ID"
+        Header always set Access-Control-Allow-Credentials "true"
+        Header always set Access-Control-Max-Age "86400"
+        
+        # Expose headers for frontend
+        Header always set Access-Control-Expose-Headers "X-RateLimit-Limit, X-RateLimit-Remaining"
+        
+        # Handle Vary header properly
+        Header always set Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+    </IfModule>
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>

@@ -15,7 +15,7 @@ class DatafastServiceProvider extends ServiceProvider
     {
         // Registrar DatafastService como singleton
         $this->app->singleton(DatafastService::class, function ($app) {
-            return new DatafastService;
+            return new DatafastService($app->make(\App\Services\ConfigurationService::class));
         });
 
         // Usar Datafast como el gateway de pago por defecto,

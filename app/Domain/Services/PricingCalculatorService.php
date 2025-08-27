@@ -127,7 +127,7 @@ class PricingCalculatorService
                 'seller_discount_amount' => $pricing['seller_discount_amount'],
                 'volume_discount_amount' => $pricing['volume_discount_amount'],
                 'total_discount_amount' => $pricing['total_discount_amount'],
-                'subtotal' => $pricing['final_price'] * $quantity,
+                'subtotal' => $pricing['final_price'] * $quantity, // Sin redondeo - frontend manejará
             ];
         }
         
@@ -150,7 +150,7 @@ class PricingCalculatorService
 
         // PASO 2: Obtener descuento por volumen dinámico desde BD
         $volumeDiscountPercentage = $this->getVolumeDiscountPercentageFromDB($quantity);
-        $volumeDiscountAmount = $sellerDiscountedPrice * ($volumeDiscountPercentage / 100);
+        $volumeDiscountAmount = $sellerDiscountedPrice * $volumeDiscountPercentage; // ✅ CORREGIDO: Ya viene como decimal
 
         // PASO 3: Precio final
         $finalPrice = $sellerDiscountedPrice - $volumeDiscountAmount;
@@ -159,12 +159,12 @@ class PricingCalculatorService
         $totalDiscountAmount = $sellerDiscountAmount + $volumeDiscountAmount;
 
         return [
-            'seller_discounted_price' => round($sellerDiscountedPrice, 2),
+            'seller_discounted_price' => $sellerDiscountedPrice, // Sin redondeo - frontend manejará
             'volume_discount_percentage' => $volumeDiscountPercentage,
-            'final_price' => round($finalPrice, 2),
-            'seller_discount_amount' => round($sellerDiscountAmount, 2),
-            'volume_discount_amount' => round($volumeDiscountAmount, 2),
-            'total_discount_amount' => round($totalDiscountAmount, 2),
+            'final_price' => $finalPrice, // Sin redondeo - frontend manejará
+            'seller_discount_amount' => $sellerDiscountAmount, // Sin redondeo - frontend manejará
+            'volume_discount_amount' => $volumeDiscountAmount, // Sin redondeo - frontend manejará  
+            'total_discount_amount' => $totalDiscountAmount, // Sin redondeo - frontend manejará
         ];
     }
 
@@ -173,16 +173,19 @@ class PricingCalculatorService
      */
     private function getVolumeDiscountPercentageFromDB(int $quantity): float
     {
-        // Obtener configuración dinámica de BD
-        $enabled = $this->configService->getConfig('volume_discounts.enabled', true);
+        // ✅ COMPLETAMENTE DINÁMICO: Verificar que esté habilitado desde BD
+        $enabled = $this->configService->getConfig('volume_discounts.enabled');
+        
+        if ($enabled === null) {
+            throw new \Exception('Configuración volume_discounts.enabled requerida en BD');
+        }
         
         if (!$enabled) {
             return 0.0;
         }
         
-        $defaultTiers = $this->configService->getConfig('volume_discounts.default_tiers', 
-            '[{"quantity":5,"discount":5,"label":"Descuento 5+"},{"quantity":6,"discount":10,"label":"Descuento 6+"},{"quantity":19,"discount":15,"label":"Descuento 19+"}]'
-        );
+        // ✅ COMPLETAMENTE DINÁMICO: Obtener tiers SOLO desde BD, sin fallback hardcoded
+        $defaultTiers = $this->configService->getConfig('volume_discounts.default_tiers');
         
         // 🔧 CORREGIDO: Verificar si ya es array o si es string JSON
         if (is_array($defaultTiers)) {
@@ -193,39 +196,35 @@ class PricingCalculatorService
             $tiers = null;
         }
         
-        if (!is_array($tiers)) {
-            Log::warning('Volume discount tiers inválidas, usando fallback', [
+        if (!is_array($tiers) || empty($tiers)) {
+            Log::error('❌ Volume discount tiers no disponibles en BD - Sistema requiere configuración válida', [
                 'tiers' => $defaultTiers, 
                 'type' => gettype($defaultTiers)
             ]);
-            return $this->getVolumeDiscountFallback($quantity);
+            throw new \Exception('Sistema requiere configuración válida de descuentos por volumen en BD');
         }
         
-        // Ordenar tiers de mayor a menor cantidad para encontrar el tier correcto
+        // Ordenar tiers de menor a mayor cantidad para aplicar el tier más alto disponible
         usort($tiers, function($a, $b) {
-            return ($b['quantity'] ?? 0) - ($a['quantity'] ?? 0);
+            return ($a['quantity'] ?? 0) - ($b['quantity'] ?? 0);
         });
         
-        // Encontrar el tier aplicable
+        // Encontrar el tier aplicable (el más alto que califica)
+        $applicableTier = null;
         foreach ($tiers as $tier) {
             if ($quantity >= ($tier['quantity'] ?? 0)) {
-                return (float) ($tier['discount'] ?? 0);
+                $applicableTier = $tier;
             }
+        }
+        
+        if ($applicableTier) {
+            return (float) ($applicableTier['discount'] ?? 0) / 100; // ✅ CORREGIDO: Convertir porcentaje a decimal
         }
         
         return 0.0;
     }
 
-    /**
-     * Fallback para descuentos por volumen si falla la BD
-     */
-    private function getVolumeDiscountFallback(int $quantity): float
-    {
-        if ($quantity >= 19) return 15.0;
-        if ($quantity >= 6) return 10.0;
-        if ($quantity >= 5) return 5.0;
-        return 0.0;
-    }
+    // ❌ ELIMINADO: No más fallbacks hardcoded - Todo debe venir de BD
 
     /**
      * 📊 PASO 2: Calcular subtotales básicos
@@ -250,11 +249,11 @@ class PricingCalculatorService
         }
 
         return [
-            'subtotal_original' => round($subtotalOriginal, 2),
-            'subtotal_with_discounts' => round($subtotalWithDiscounts, 2),
-            'seller_discounts' => round($totalSellerDiscounts, 2),
-            'volume_discounts' => round($totalVolumeDiscounts, 2),
-            'total_discounts' => round($totalSellerDiscounts + $totalVolumeDiscounts, 2),
+            'subtotal_original' => $subtotalOriginal, // Sin redondeo - frontend manejará
+            'subtotal_with_discounts' => $subtotalWithDiscounts, // Sin redondeo - frontend manejará
+            'seller_discounts' => $totalSellerDiscounts, // Sin redondeo - frontend manejará
+            'volume_discounts' => $totalVolumeDiscounts, // Sin redondeo - frontend manejará
+            'total_discounts' => $totalSellerDiscounts + $totalVolumeDiscounts, // Sin redondeo - frontend manejará
         ];
     }
 
@@ -287,8 +286,8 @@ class PricingCalculatorService
                 $discountAmount = $discountInfo['discount_amount'] ?? 0;
                 
                 return [
-                    'subtotal_after_coupon' => round($subtotalData['subtotal_with_discounts'] - $discountAmount, 2),
-                    'coupon_discount' => round($discountAmount, 2),
+                    'subtotal_after_coupon' => $subtotalData['subtotal_with_discounts'] - $discountAmount, // Sin redondeo - frontend manejará
+                    'coupon_discount' => $discountAmount, // Sin redondeo - frontend manejará
                     'coupon_info' => $discountInfo,
                 ];
             } else {
@@ -309,9 +308,15 @@ class PricingCalculatorService
      */
     private function calculateShipping(float $subtotal): array
     {
-        $enabled = $this->configService->getConfig('shipping.enabled', true);
-        $freeThreshold = $this->configService->getConfig('shipping.free_threshold', 50.00);
-        $defaultCost = $this->configService->getConfig('shipping.default_cost', 5.00);
+        // ✅ COMPLETAMENTE DINÁMICO: Sin valores por defecto hardcoded
+        $enabled = $this->configService->getConfig('shipping.enabled');
+        $freeThreshold = $this->configService->getConfig('shipping.free_threshold');
+        $defaultCost = $this->configService->getConfig('shipping.default_cost');
+        
+        // Validar que la configuración existe
+        if ($enabled === null || $freeThreshold === null || $defaultCost === null) {
+            throw new \Exception('Configuración de envío requerida no encontrada en BD');
+        }
 
         if (!$enabled) {
             return [
@@ -325,24 +330,36 @@ class PricingCalculatorService
         $shippingCost = $freeShipping ? 0 : $defaultCost;
 
         return [
-            'shipping_cost' => round($shippingCost, 2),
+            'shipping_cost' => $shippingCost, // Sin redondeo - frontend manejará
             'free_shipping' => $freeShipping,
             'free_shipping_threshold' => $freeThreshold,
         ];
     }
 
     /**
-     * 🏷️ PASO 5: Calcular IVA 15% sobre (subtotal + envío)
+     * 🏷️ PASO 5: Calcular IVA dinámico desde configuración sobre (subtotal + envío)
      */
     private function calculateTax(float $subtotal, float $shippingCost): array
     {
+        // ✅ COMPLETAMENTE DINÁMICO: Con fallback seguro 15% para Ecuador
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+        
+        // Log para debug en caso de problemas
+        \Log::info('PricingCalculatorService: Tax rate obtenido', [
+            'tax_rate_percentage' => $taxRatePercentage,
+            'subtotal' => $subtotal,
+            'shipping_cost' => $shippingCost
+        ]);
+        
+        $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
+        
         $taxableAmount = $subtotal + $shippingCost;
-        $taxAmount = $taxableAmount * 0.15; // 15% IVA
+        $taxAmount = $taxableAmount * $taxRate;
 
         return [
-            'taxable_amount' => round($taxableAmount, 2),
-            'tax_amount' => round($taxAmount, 2),
-            'tax_rate' => 15,
+            'taxable_amount' => $taxableAmount, // Sin redondeo - frontend manejará
+            'tax_amount' => $taxAmount, // Sin redondeo - frontend manejará
+            'tax_rate' => $taxRatePercentage,
         ];
     }
 
@@ -357,8 +374,8 @@ class PricingCalculatorService
         array $taxData
     ): array {
         
-        $finalTotal = $couponData['subtotal_after_coupon'] + $shippingData['shipping_cost'] + $taxData['tax_amount'];
-        $totalDiscounts = $subtotalData['total_discounts'] + $couponData['coupon_discount'];
+        $finalTotal = $couponData['subtotal_after_coupon'] + $shippingData['shipping_cost'] + $taxData['tax_amount']; // Sin redondeo - frontend manejará
+        $totalDiscounts = $subtotalData['total_discounts'] + $couponData['coupon_discount']; // Sin redondeo - frontend manejará
 
         return [
             // Items procesados
@@ -373,7 +390,7 @@ class PricingCalculatorService
             'seller_discounts' => $subtotalData['seller_discounts'],
             'volume_discounts' => $subtotalData['volume_discounts'],
             'coupon_discount' => $couponData['coupon_discount'],
-            'total_discounts' => round($totalDiscounts, 2),
+            'total_discounts' => $totalDiscounts, // Sin redondeo - frontend manejará
             
             // Envío e IVA
             'shipping_cost' => $shippingData['shipping_cost'],
@@ -400,7 +417,7 @@ class PricingCalculatorService
                 'subtotal_original' => $subtotalData['subtotal_original'],
                 'seller_discounts' => $subtotalData['seller_discounts'],
                 'volume_discounts' => $subtotalData['volume_discounts'],
-                'total_discounts' => round($totalDiscounts, 2),
+                'total_discounts' => $totalDiscounts, // Sin redondeo - frontend manejará
                 'free_shipping' => $shippingData['free_shipping'],
                 'free_shipping_threshold' => $shippingData['free_shipping_threshold'],
                 'tax_rate' => $taxData['tax_rate'],

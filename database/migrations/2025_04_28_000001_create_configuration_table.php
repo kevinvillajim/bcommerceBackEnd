@@ -471,8 +471,8 @@ return new class extends Migration
             ],
             [
                 'key' => 'payment.taxRate',
-                'value' => '12',
-                'description' => 'Tasa de impuesto (%)',
+                'value' => '15',
+                'description' => 'Tasa de impuesto (%) - IVA Ecuador',
                 'group' => 'payment',
                 'type' => 'number',
                 'created_at' => now(),

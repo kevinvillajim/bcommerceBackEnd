@@ -73,9 +73,26 @@ class OrderItemBreakdownController extends Controller
             }
             
             // Obtener el precio original REAL del producto desde la BD
-            // No usar el precio del item que ya tiene descuentos aplicados
             $originalPrice = floatval($product->price);
             $quantity = $item->quantity;
+            $sellerDiscountPercentage = floatval($product->discount_percentage ?? 0);
+            
+            // ✅ CALCULAR PRECIOS PASO A PASO (mismo flujo que PricingCalculatorService)
+            
+            // Paso 1: Precio después de descuento seller
+            $sellerDiscountAmount = $originalPrice * ($sellerDiscountPercentage / 100);
+            $priceAfterSeller = $originalPrice - $sellerDiscountAmount;
+            
+            // Paso 2: Descuento por volumen (usando misma lógica que backend)
+            $volumeDiscountPercentage = $this->getVolumeDiscountForQuantity($quantity);
+            $volumeDiscountAmount = $priceAfterSeller * $volumeDiscountPercentage;
+            $finalPricePerUnit = $priceAfterSeller - $volumeDiscountAmount;
+            
+            // Calcular subtotal y ahorros
+            $subtotalAfterDiscounts = $finalPricePerUnit * $quantity;
+            $totalVolumeDiscount = $volumeDiscountAmount * $quantity;
+            $totalSellerDiscount = $sellerDiscountAmount * $quantity;
+            $totalSavings = $totalSellerDiscount + $totalVolumeDiscount;
             
             $itemsWithBreakdown[] = [
                 'id' => $item->id,
@@ -83,7 +100,36 @@ class OrderItemBreakdownController extends Controller
                 'product_name' => $product->name,
                 'product_image' => $product->images[0]['thumbnail'] ?? null,
                 'quantity' => $quantity,
-                'breakdown_steps' => []
+                // ✅ CAMPOS QUE NECESITA EL FRONTEND
+                'original_unit_price' => round($originalPrice, 2),
+                'unit_price' => round($finalPricePerUnit, 2),
+                'total_price' => round($subtotalAfterDiscounts, 2),
+                'total_savings' => round($totalSavings, 2),
+                'seller_discount_percentage' => $sellerDiscountPercentage,
+                'volume_discount_percentage' => $volumeDiscountPercentage * 100, // Como porcentaje para display
+                'breakdown_steps' => [
+                    [
+                        'step' => 1,
+                        'label' => 'Precio original',
+                        'price_per_unit' => round($originalPrice, 2),
+                        'percentage' => 0,
+                        'is_discount' => false
+                    ],
+                    [
+                        'step' => 2,
+                        'label' => "Descuento del seller ({$sellerDiscountPercentage}%)",
+                        'price_per_unit' => round($priceAfterSeller, 2),
+                        'percentage' => $sellerDiscountPercentage,
+                        'is_discount' => true
+                    ],
+                    [
+                        'step' => 3,
+                        'label' => "Descuento por volumen (" . round($volumeDiscountPercentage * 100, 1) . "%)",
+                        'price_per_unit' => round($finalPricePerUnit, 2),
+                        'percentage' => $volumeDiscountPercentage * 100,
+                        'is_discount' => true
+                    ]
+                ]
             ];
         }
         
@@ -96,5 +142,54 @@ class OrderItemBreakdownController extends Controller
                 'coupon_percentage' => 0
             ]
         ]);
+    }
+
+    /**
+     * ✅ NUEVO: Obtener descuento por volumen usando configuración dinámica
+     * Misma lógica que PricingCalculatorService para garantizar consistencia
+     */
+    private function getVolumeDiscountForQuantity(int $quantity): float
+    {
+        $configService = app()->make('App\Services\ConfigurationService');
+        
+        // Verificar si está habilitado
+        $enabled = $configService->getConfig('volume_discounts.enabled');
+        if (!$enabled) {
+            return 0.0;
+        }
+        
+        // Obtener tiers dinámicos
+        $defaultTiers = $configService->getConfig('volume_discounts.default_tiers');
+        
+        if (is_array($defaultTiers)) {
+            $tiers = $defaultTiers;
+        } elseif (is_string($defaultTiers)) {
+            $tiers = json_decode($defaultTiers, true);
+        } else {
+            return 0.0;
+        }
+        
+        if (!is_array($tiers) || empty($tiers)) {
+            return 0.0;
+        }
+        
+        // Ordenar tiers de menor a mayor cantidad
+        usort($tiers, function($a, $b) {
+            return ($a['quantity'] ?? 0) - ($b['quantity'] ?? 0);
+        });
+        
+        // Encontrar el tier más alto que califica
+        $applicableTier = null;
+        foreach ($tiers as $tier) {
+            if ($quantity >= ($tier['quantity'] ?? 0)) {
+                $applicableTier = $tier;
+            }
+        }
+        
+        if ($applicableTier) {
+            return (float) ($applicableTier['discount'] ?? 0) / 100; // Convertir porcentaje a decimal
+        }
+        
+        return 0.0;
     }
 }

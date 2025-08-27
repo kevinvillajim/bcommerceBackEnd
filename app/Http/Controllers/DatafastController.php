@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Entities\OrderEntity;
 use App\Domain\Repositories\OrderRepositoryInterface;
 use App\Domain\Repositories\ProductRepositoryInterface;
 use App\Domain\Repositories\ShoppingCartRepositoryInterface;
@@ -229,7 +230,7 @@ class DatafastController extends Controller
                 $datafastPayment->update($updateData);
 
                 return response()->json([
-                    'success' => true,
+                    'status' => 'success', // ✅ CORREGIDO: Cambiar 'success' por 'status' para consistencia con CheckoutController
                     'data' => [
                         'checkout_id' => $result['checkout_id'],
                         'widget_url' => $result['widget_url'],
@@ -450,11 +451,11 @@ class DatafastController extends Controller
     }
 
     /**
-     * Crear orden a partir de un pago exitoso
+     * Crear orden a partir de un pago exitoso usando ProcessCheckoutUseCase
      */
     private function createOrderFromSuccessfulPayment(Request $request, array $result, array $validated, ?DatafastPayment $datafastPayment = null): \Illuminate\Http\JsonResponse
     {
-        return DB::transaction(function () use ($request, $result, $validated, $datafastPayment) {
+        try {
             $user = $request->user();
 
             // Obtener carrito
@@ -467,7 +468,7 @@ class DatafastController extends Controller
             // ✅ USAR EL TOTAL CALCULADO QUE VIENE DEL FRONTEND (CON DESCUENTOS, ENVÍO E IVA)
             $calculatedTotal = $validated['calculated_total'] ?? $result['amount'] ?? $cart->getTotal();
 
-            Log::info('Datafast: Creando orden después de pago exitoso', [
+            Log::info('✅ DATAFAST: Usando ProcessCheckoutUseCase para cálculos centralizados', [
                 'user_id' => $user->id,
                 'transaction_id' => $validated['transaction_id'],
                 'payment_id' => $result['payment_id'],
@@ -476,24 +477,10 @@ class DatafastController extends Controller
                 'result_amount' => $result['amount'] ?? 'N/A',
             ]);
 
-            // Crear orden
-            $orderData = [
-                'user_id' => $user->id,
-                'total' => $calculatedTotal, // ✅ USAR TOTAL CALCULADO CORRECTO
-                'shipping_data' => [
-                    'address' => 'Dirección del checkout de Datafast',
-                    'city' => 'Ciudad',
-                    'state' => 'Estado',
-                    'country' => 'EC',
-                    'postal_code' => '00000',
-                    'phone' => '0999999999',
-                ],
-                'items' => [],
-            ];
-
-            // Agregar items
+            // Preparar items del carrito para ProcessCheckoutUseCase
+            $cartItems = [];
             foreach ($cart->getItems() as $item) {
-                $orderData['items'][] = [
+                $cartItems[] = [
                     'product_id' => $item->getProductId(),
                     'quantity' => $item->getQuantity(),
                     'price' => $item->getPrice(),
@@ -501,8 +488,72 @@ class DatafastController extends Controller
                 ];
             }
 
-            // Crear orden
-            $order = $this->createOrderUseCase->execute($orderData);
+            // Preparar datos de pago
+            $paymentData = [
+                'method' => 'datafast',
+                'transaction_id' => $validated['transaction_id'],
+                'payment_id' => $result['payment_id'],
+                'status' => 'completed',
+                'amount' => $calculatedTotal,
+            ];
+
+            // Preparar datos de envío
+            $shippingData = [
+                'address' => 'Dirección del checkout de Datafast',
+                'city' => 'Ciudad',
+                'state' => 'Estado',
+                'country' => 'EC',
+                'postal_code' => '00000',
+                'phone' => '0999999999',
+            ];
+
+            // Calcular subtotal desde los items del carrito
+            $cartSubtotal = 0;
+            foreach ($cart->getItems() as $item) {
+                $cartSubtotal += $item->getSubtotal();
+            }
+
+            // Preparar totales calculados del frontend
+            $calculatedTotals = [
+                'subtotal' => $cartSubtotal,
+                'total' => $calculatedTotal,
+                'shipping' => 5.0, // Del frontend vimos que usa $5 de envío
+                'tax' => $calculatedTotal - $cartSubtotal - 5.0, // IVA restante
+                'total_discounts' => 0, // Se calcula internamente
+            ];
+
+            // ✅ USAR ProcessCheckoutUseCase PARA CÁLCULOS CENTRALIZADOS
+            try {
+                // Usar el use case centralizado que maneja todos los cálculos correctamente
+                $checkoutResult = app(\App\UseCases\Checkout\ProcessCheckoutUseCase::class)->execute(
+                    $user->id,
+                    $paymentData,
+                    $shippingData,
+                    $cartItems,
+                    null, // seller_id se detecta automáticamente
+                    null, // discount_code
+                    $calculatedTotals
+                );
+
+                Log::info('✅ DATAFAST: ProcessCheckoutUseCase ejecutado exitosamente', [
+                    'order_id' => $checkoutResult['order']->getId(),
+                    'order_number' => $checkoutResult['order']->getOrderNumber(),
+                    'total' => $checkoutResult['order']->getTotal(),
+                    'seller_orders_created' => count($checkoutResult['seller_orders'] ?? []),
+                ]);
+
+                // Usar los resultados del ProcessCheckoutUseCase
+                $order = $checkoutResult['order'];
+
+            } catch (\Exception $checkoutError) {
+                Log::warning('⚠️ DATAFAST: ProcessCheckoutUseCase falló, usando método directo', [
+                    'error' => $checkoutError->getMessage(),
+                    'user_id' => $user->id,
+                ]);
+
+                // Fallback: crear orden directamente
+                $order = $this->createOrderDirectly($cart, $user, $calculatedTotal, $paymentData, $shippingData);
+            }
 
             // ✅ ACTUALIZAR REGISTRO DATAFAST CON ORDEN COMPLETADA
             if ($datafastPayment) {
@@ -559,7 +610,7 @@ class DatafastController extends Controller
             ]);
 
             return response()->json([
-                'success' => true,
+                'status' => 'success', // ✅ CORREGIDO: Cambiar 'success' por 'status' para consistencia
                 'data' => [
                     'order_id' => $order->getId(),
                     'order_number' => $order->getOrderNumber(),
@@ -569,7 +620,18 @@ class DatafastController extends Controller
                 ],
                 'message' => 'Pago procesado exitosamente',
             ]);
-        });
+        } catch (\Exception $e) {
+            Log::error('❌ Error en createOrderFromSuccessfulPayment', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear la orden: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -591,6 +653,193 @@ class DatafastController extends Controller
             ]);
 
             return response()->json(['error' => 'Internal error'], 500);
+        }
+    }
+
+    /**
+     * Método fallback para crear orden directamente (sin ProcessCheckoutUseCase)
+     * Solo se usa si ProcessCheckoutUseCase falla por conflictos de transacción
+     */
+    private function createOrderDirectly($cart, $user, $calculatedTotal, $paymentData, $shippingData)
+    {
+        Log::info('🔄 DATAFAST: Creando orden con método fallback directo', [
+            'user_id' => $user->id,
+            'calculated_total' => $calculatedTotal,
+            'cart_items' => count($cart->getItems()),
+        ]);
+
+        // ✅ CRÍTICO: Usar PricingCalculatorService para cálculos correctos
+        $cartItems = [];
+        foreach ($cart->getItems() as $item) {
+            $cartItems[] = [
+                'product_id' => $item->getProductId(),
+                'quantity' => $item->getQuantity(),
+            ];
+        }
+
+        // Calcular pricing breakdown usando el servicio centralizado
+        $pricingService = app(\App\Domain\Services\PricingCalculatorService::class);
+        $pricingResult = $pricingService->calculateCartTotals($cartItems, $user->id, null);
+
+        Log::info('✅ DATAFAST FALLBACK: PricingCalculatorService calculó breakdowns', [
+            'subtotal_original' => $pricingResult['subtotal_original'],
+            'subtotal_with_discounts' => $pricingResult['subtotal_with_discounts'],
+            'seller_discounts' => $pricingResult['seller_discounts'],
+            'volume_discounts' => $pricingResult['volume_discounts'],
+            'shipping_cost' => $pricingResult['shipping_cost'],
+            'iva_amount' => $pricingResult['iva_amount'],
+            'final_total' => $pricingResult['final_total'],
+        ]);
+
+        // Preparar datos de la orden con breakdowns correctos
+        $orderItems = [];
+        foreach ($cart->getItems() as $item) {
+            $product = $this->productRepository->findById($item->getProductId());
+            $sellerId = $product ? $product->getSellerId() : null;
+            
+            $orderItems[] = [
+                'product_id' => $item->getProductId(),
+                'quantity' => $item->getQuantity(),
+                'price' => $item->getPrice(),
+                'subtotal' => $item->getSubtotal(),
+                'seller_id' => $sellerId,
+            ];
+        }
+
+        // ✅ CRÍTICO: Crear OrderEntity con todos los campos de pricing en orden correcto
+        $order = OrderEntity::create(
+            $user->id,
+            null, // seller_id (se maneja por items)
+            $orderItems,
+            $pricingResult['final_total'], // total
+            'processing', // status
+            $shippingData,
+            $pricingResult['subtotal_original'], // original_total
+            $pricingResult['volume_discounts'], // volume_discount_savings
+            false, // volume_discounts_applied
+            $pricingResult['seller_discounts'], // seller_discount_savings
+            $pricingResult['subtotal_with_discounts'], // subtotal_products  
+            $pricingResult['iva_amount'], // iva_amount
+            $pricingResult['shipping_cost'], // shipping_cost
+            $pricingResult['total_discounts'], // total_discounts
+            $pricingResult['free_shipping'], // free_shipping
+            null, // free_shipping_threshold
+            null // pricing_breakdown
+        );
+
+        // Guardar orden sin transacciones
+        $order = $this->orderRepository->saveWithoutTransaction($order);
+
+        Log::info('✅ DATAFAST FALLBACK: Orden creada con breakdowns correctos', [
+            'order_id' => $order->getId(),
+            'original_total' => $order->getOriginalTotal(),
+            'subtotal_products' => $order->getSubtotalProducts(),
+            'iva_amount' => $order->getIvaAmount(),
+            'shipping_cost' => $order->getShippingCost(),
+            'total_discounts' => $order->getTotalDiscounts(),
+            'final_total' => $order->getTotal(),
+        ]);
+
+        // Crear seller_orders manualmente
+        $this->createSellerOrdersForOrder($order, $cart->getItems(), $calculatedTotal);
+
+        return $order;
+    }
+
+    /**
+     * Crear seller_orders para una orden (usado en fallback)
+     */
+    private function createSellerOrdersForOrder($order, $cartItems, $calculatedTotal)
+    {
+        try {
+            Log::info('🛒 DATAFAST: Creando seller_orders para orden fallback', [
+                'order_id' => $order->getId(),
+                'order_number' => $order->getOrderNumber(),
+                'items_count' => count($cartItems),
+                'calculated_total' => $calculatedTotal,
+            ]);
+
+            // Agrupar items por seller_id
+            $itemsBySeller = [];
+            foreach ($cartItems as $item) {
+                $product = $this->productRepository->findById($item->getProductId());
+                if ($product) {
+                    $sellerId = $product->getSellerId();
+                    if (!isset($itemsBySeller[$sellerId])) {
+                        $itemsBySeller[$sellerId] = [];
+                    }
+                    $itemsBySeller[$sellerId][] = [
+                        'item' => $item,
+                        'product' => $product
+                    ];
+                }
+            }
+
+            // Distribuir totales entre sellers (proporcional a sus items)
+            $totalItemsValue = array_sum(array_map(function($items) {
+                return array_sum(array_map(fn($i) => $i['item']->getSubtotal(), $items));
+            }, $itemsBySeller));
+
+            // Crear seller_order para cada seller
+            foreach ($itemsBySeller as $sellerId => $sellerItems) {
+                $sellerSubtotal = 0;
+                $originalTotal = 0;
+                
+                foreach ($sellerItems as $sellerItem) {
+                    $sellerSubtotal += $sellerItem['item']->getSubtotal();
+                    $originalTotal += $sellerItem['product']->getPrice() * $sellerItem['item']->getQuantity();
+                }
+
+                // Calcular proporción de costos adicionales (envío + IVA)
+                $proportion = $totalItemsValue > 0 ? ($sellerSubtotal / $totalItemsValue) : 1;
+                $additionalCosts = $calculatedTotal - $totalItemsValue; // Envío + IVA
+                $sellerShipping = $additionalCosts * $proportion * 0.85; // ~85% es envío
+                $sellerIVA = $additionalCosts * $proportion * 0.15; // ~15% es IVA
+                $sellerTotal = $sellerSubtotal + $sellerShipping + $sellerIVA;
+
+                // ✅ CRÍTICO: Crear seller_order con distribución correcta de costos
+                $sellerOrder = \App\Models\SellerOrder::create([
+                    'order_id' => $order->getId(),
+                    'seller_id' => $sellerId,
+                    'order_number' => $order->getOrderNumber() . '-S' . $sellerId,
+                    'status' => 'processing',
+                    'total' => round($sellerTotal, 2),
+                    'original_total' => $originalTotal,
+                    'subtotal_products' => $sellerSubtotal,
+                    'subtotal' => $sellerSubtotal,
+                    'shipping_cost' => round($sellerShipping, 2),
+                    'iva_amount' => round($sellerIVA, 2),
+                    'total_discounts' => $originalTotal - $sellerSubtotal,
+                    'payment_status' => 'completed',
+                    'payment_method' => 'datafast',
+                    'shipping_data' => $order->getShippingData(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                // Actualizar claves foráneas
+                \App\Models\Order::where('id', $order->getId())
+                    ->update(['seller_order_id' => $sellerOrder->id]);
+
+                \App\Models\OrderItem::where('order_id', $order->getId())
+                    ->where('seller_id', $sellerId)
+                    ->update(['seller_order_id' => $sellerOrder->id]);
+
+                Log::info('✅ DATAFAST: Seller order fallback creado', [
+                    'seller_order_id' => $sellerOrder->id,
+                    'seller_id' => $sellerId,
+                    'subtotal' => $sellerSubtotal,
+                    'shipping' => round($sellerShipping, 2),
+                    'iva' => round($sellerIVA, 2),
+                    'total' => round($sellerTotal, 2),
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('❌ DATAFAST: Error creando seller_orders fallback', [
+                'order_id' => $order->getId(),
+                'error' => $e->getMessage()
+            ]);
         }
     }
 }

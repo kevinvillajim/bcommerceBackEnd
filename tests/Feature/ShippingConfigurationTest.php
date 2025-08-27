@@ -46,15 +46,15 @@ class ShippingConfigurationTest extends TestCase
         $this->configService->setConfig('shipping.default_cost', 5.00);
 
         $response = $this->actingAs($this->adminUser)
-            ->getJson('/api/admin/configurations/category?category=shipping');
+            ->getJson('/api/admin/configurations/shipping');
 
         $response->assertStatus(200)
             ->assertJson([
                 'status' => 'success',
                 'data' => [
                     'enabled' => true,
-                    'freeThreshold' => 50.00,
-                    'defaultCost' => 5.00,
+                    'free_threshold' => 50.00,
+                    'default_cost' => 5.00,
                 ]
             ]);
     }
@@ -64,15 +64,12 @@ class ShippingConfigurationTest extends TestCase
     {
         $newConfig = [
             'enabled' => true,
-            'freeThreshold' => 75.00,
-            'defaultCost' => 7.50,
+            'free_threshold' => 75.00,
+            'default_cost' => 7.50,
         ];
 
         $response = $this->actingAs($this->adminUser)
-            ->postJson('/api/admin/configurations/category', [
-                'category' => 'shipping',
-                'configurations' => $newConfig
-            ]);
+            ->postJson('/api/admin/configurations/shipping', $newConfig);
 
         $response->assertStatus(200)
             ->assertJson([
@@ -173,15 +170,12 @@ class ShippingConfigurationTest extends TestCase
     {
         $invalidConfig = [
             'enabled' => 'not_boolean',
-            'freeThreshold' => -10, // Invalid negative value
-            'defaultCost' => 'not_numeric',
+            'free_threshold' => -10, // Invalid negative value
+            'default_cost' => 'not_numeric',
         ];
 
         $response = $this->actingAs($this->adminUser)
-            ->postJson('/api/admin/configurations/category', [
-                'category' => 'shipping',
-                'configurations' => $invalidConfig
-            ]);
+            ->postJson('/api/admin/configurations/shipping', $invalidConfig);
 
         // Should handle validation errors gracefully
         // (Exact status depends on backend validation implementation)
@@ -250,7 +244,7 @@ class ShippingConfigurationTest extends TestCase
         ]);
 
         $response = $this->actingAs($regularUser)
-            ->getJson('/api/admin/configurations/category?category=shipping');
+            ->getJson('/api/admin/configurations/shipping');
 
         $response->assertStatus(403); // Or whatever your auth middleware returns
     }
@@ -258,7 +252,7 @@ class ShippingConfigurationTest extends TestCase
     /** @test */
     public function guest_cannot_access_shipping_configuration()
     {
-        $response = $this->getJson('/api/admin/configurations/category?category=shipping');
+        $response = $this->getJson('/api/admin/configurations/shipping');
 
         $response->assertStatus(401); // Unauthorized
     }

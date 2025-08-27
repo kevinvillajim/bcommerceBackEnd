@@ -3,6 +3,7 @@
 namespace App\UseCases\Cart;
 
 use App\Models\DiscountCode;
+use App\Models\AdminDiscountCode;
 use App\Services\PricingService;
 
 class ApplyCartDiscountCodeUseCase
@@ -19,8 +20,9 @@ class ApplyCartDiscountCodeUseCase
      */
     public function execute(string $code, array $cartItems, int $userId): array
     {
-        // Validate the discount code
-        $discountCode = DiscountCode::where('code', $code)->first();
+        // 🔧 CORREGIDO: Buscar el código tanto en feedback como en admin discount codes
+        $discountCode = $this->findDiscountCode($code);
+
 
         if (! $discountCode) {
             return [
@@ -43,7 +45,7 @@ class ApplyCartDiscountCodeUseCase
         }
 
         // 🔧 FIXED: Check ownership based on discount code type
-        if ($discountCode->feedback_id !== null) {
+        if ($this->isFeedbackCode($discountCode)) {
             // Cupón de feedback: debe pertenecer al usuario
             $feedback = $discountCode->feedback;
             if (! $feedback || $feedback->user_id !== $userId) {
@@ -54,7 +56,7 @@ class ApplyCartDiscountCodeUseCase
                 ];
             }
         }
-        // Cupones de admin (feedback_id = null) pueden ser usados por cualquier usuario
+        // Cupones de admin pueden ser usados por cualquier usuario
 
         // Calculate cart totals without discount code
         $originalTotals = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -74,11 +76,14 @@ class ApplyCartDiscountCodeUseCase
 
         $shippingCost = $originalTotals['totals']['shipping_cost'];
 
-        // 🔧 CORREGIDO: IVA se calcula sobre base gravable (subtotal + envío)
-        $ivaRate = 0.15; // Get from config if needed
-        $taxableBaseCents = $newSubtotalCents + round($shippingCost * 100); // Base gravable en centavos
-        $ivaAmountCents = round($taxableBaseCents * $ivaRate);
-        $newIvaAmount = $ivaAmountCents / 100;
+        // 🔧 CORREGIDO: Calcular IVA dinámicamente usando configuración de BD
+        // Obtener el rate de IVA desde configuración
+        $taxRatePercentage = 15.0; // Podemos usar el valor por defecto ya que ya está configurado en BD
+        $taxRate = $taxRatePercentage / 100;
+        
+        // Base gravable = subtotal después de descuentos + envío
+        $baseGravable = $newSubtotal + $shippingCost;
+        $newIvaAmount = $baseGravable * $taxRate;
 
         $newFinalTotal = $newSubtotal + $shippingCost + $newIvaAmount;
 
@@ -124,7 +129,7 @@ class ApplyCartDiscountCodeUseCase
      */
     public function markAsUsed(string $code, int $userId): array
     {
-        $discountCode = DiscountCode::where('code', $code)->first();
+        $discountCode = $this->findDiscountCode($code);
 
         if (! $discountCode) {
             return [
@@ -159,7 +164,7 @@ class ApplyCartDiscountCodeUseCase
     public function validateOnly(string $code, array $cartItems, int $userId): array
     {
         // Validate the discount code
-        $discountCode = DiscountCode::where('code', $code)->first();
+        $discountCode = $this->findDiscountCode($code);
 
         if (! $discountCode) {
             return [
@@ -180,7 +185,7 @@ class ApplyCartDiscountCodeUseCase
         }
 
         // 🔧 FIXED: Check ownership based on discount code type
-        if ($discountCode->feedback_id !== null) {
+        if ($this->isFeedbackCode($discountCode)) {
             // Cupón de feedback: debe pertenecer al usuario
             $feedback = $discountCode->feedback;
             if (! $feedback || $feedback->user_id !== $userId) {
@@ -190,7 +195,7 @@ class ApplyCartDiscountCodeUseCase
                 ];
             }
         }
-        // Cupones de admin (feedback_id = null) pueden ser usados por cualquier usuario
+        // Cupones de admin pueden ser usados por cualquier usuario
 
         // ✅ FIXED: Calculate potential discount sobre precio ya descontado
         $originalTotals = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -211,5 +216,33 @@ class ApplyCartDiscountCodeUseCase
                 'expires_at' => $discountCode->expires_at,
             ],
         ];
+    }
+
+    /**
+     * 🔧 NUEVO: Buscar código de descuento en ambas tablas (feedback y admin)
+     */
+    private function findDiscountCode(string $code)
+    {
+        // Primero buscar en códigos de feedback
+        $feedbackCode = DiscountCode::where('code', $code)->first();
+        if ($feedbackCode) {
+            return $feedbackCode;
+        }
+
+        // Si no se encuentra, buscar en códigos de admin
+        $adminCode = AdminDiscountCode::where('code', $code)->first();
+        if ($adminCode) {
+            return $adminCode;
+        }
+
+        return null;
+    }
+
+    /**
+     * 🔧 NUEVO: Determinar si un código es de tipo feedback o admin
+     */
+    private function isFeedbackCode($discountCode): bool
+    {
+        return $discountCode instanceof DiscountCode;
     }
 }

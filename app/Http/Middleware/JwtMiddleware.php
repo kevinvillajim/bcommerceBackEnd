@@ -17,6 +17,11 @@ class JwtMiddleware
 
     public function handle(Request $request, Closure $next)
     {
+        // CORS FIX: Allow OPTIONS requests (preflight) to pass through without JWT validation
+        if ($request->isMethod('OPTIONS')) {
+            return $next($request);
+        }
+
         try {
             // Extraer token del encabezado
             if (! $request->headers->has('Authorization')) {
@@ -63,7 +68,9 @@ class JwtMiddleware
             }
 
             // Adjuntar usuario a la solicitud
-            $request->merge(['authenticated_user' => $user]);
+            $request->setUserResolver(function () use ($user) {
+                return $user;
+            });
 
             return $next($request);
         } catch (\Exception $e) {

@@ -1,14 +1,30 @@
+# === ARCHIVOS CRÍTICOS - NUNCA VERSIONAR ===
+/storage/app/public/
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+/storage/pail
+/storage/*.key
+
+# === DEPENDENCIAS Y COMPILADOS ===
 /.phpunit.cache
 /node_modules
 /public/build
 /public/hot
 /public/storage
-/storage/*.key
-/storage/pail
 /vendor
-.env
-.env.backup
-.env.production
+/bootstrap/cache/*.php
+
+# === INCLUIR .env PORQUE REPO ES PRIVADO ===
+# .env                    ← COMENTADO para incluirlo
+.env.local
+.env.production.backup
+.env.backup*
+.env.testing
+.env.staging
+
+# === ARCHIVOS DE DESARROLLO ===
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -16,8 +32,22 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 /auth.json
+
+# === BASE DE DATOS LOCAL ===
+/database/*.sqlite
+/database/*.db
+
+# === IDEs Y EDITORES ===
 /.fleet
 /.idea
 /.nova
 /.vscode
 /.zed
+
+# === SISTEMA OPERATIVO ===
+.DS_Store
+Thumbs.db
+
+# === LOGS ESPECÍFICOS ===
+*.log
+laravel.log

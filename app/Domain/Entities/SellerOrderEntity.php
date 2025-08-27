@@ -132,7 +132,7 @@ class SellerOrderEntity
         float $total,
         string $status,
         ?array $shippingData,
-        string $orderNumber,
+        ?string $orderNumber,
         string $createdAt,
         string $updatedAt,
         array $items = [],

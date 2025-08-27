@@ -152,8 +152,9 @@ class PricingService
             }
         }
 
-        // ✅ FIXED: Cálculos exactos para evitar errores de redondeo
-        $ivaRate = $this->configService->getConfig('tax.iva_rate', 0.15);
+        // ✅ FIXED: Cálculos exactos para evitar errores de redondeo - IVA dinámico
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+        $ivaRate = $taxRatePercentage / 100; // Convertir % a decimal
 
         // Trabajar con centavos para precisión exacta
         $subtotalProductsCents = round($subtotalProducts * 100);

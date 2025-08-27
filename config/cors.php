@@ -17,24 +17,30 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => [
-        env('FRONTEND_URL', 'http://localhost:3000'),
+    'allowed_origins' => array_filter([
+        env('FRONTEND_URL', 'https://comersia.app'),
+        // URLs de producción/staging (mismas URLs)
+        'https://comersia.app',
+        'https://www.comersia.app', 
+        // URLs locales para desarrollo
         'http://localhost:3000',
-        'http://localhost:3001',
+        'http://localhost:3001', 
         'http://localhost:3002',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
         'http://127.0.0.1:3002',
-        'https://comersia.app',
-        'https://www.comersia.app',
-    ],
+        'https://localhost:3000',
+        'https://127.0.0.1:3000',
+    ]),
 
-    'allowed_origins_patterns' => [
-        // Solo añadir patrones si no están vacíos
-        ...array_filter([env('CORS_ALLOWED_ORIGIN_PATTERN')]),
-    ],
+    'allowed_origins_patterns' => array_filter([
+        env('CORS_ALLOWED_ORIGIN_PATTERN'),
+        // Patrones flexibles para desarrollo
+        '/^https?:\/\/localhost:\d+$/',                   // localhost con cualquier puerto
+        '/^https?:\/\/127\.0\.0\.1:\d+$/',              // 127.0.0.1 con cualquier puerto
+    ]),
 
     'allowed_headers' => [
         'Accept',

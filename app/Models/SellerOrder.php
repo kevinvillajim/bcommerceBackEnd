@@ -22,6 +22,9 @@ class SellerOrder extends Model
 
     protected $casts = [
         'shipping_data' => 'json',
+        // ✅ ECUADOR TIMEZONE: Timestamps con zona horaria correcta
+        'created_at' => 'datetime:Y-m-d H:i:s',
+        'updated_at' => 'datetime:Y-m-d H:i:s',
     ];
 
     /**

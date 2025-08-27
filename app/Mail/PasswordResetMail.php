@@ -37,7 +37,7 @@ class PasswordResetMail extends BaseMail
 
     private function generateResetUrl(string $token): string
     {
-        $backendUrl = config('app.url', 'http://localhost:8000');
-        return "{$backendUrl}/api/auth/reset-password/verify?token={$token}&email=" . urlencode($this->user->email);
+        $frontendUrl = config('app.frontend_url', 'https://comersia.app');
+        return "{$frontendUrl}/reset-password?token={$token}&email=" . urlencode($this->user->email);
     }
 }

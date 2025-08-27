@@ -24,19 +24,41 @@ return new class extends Migration
             })
             ->count();
 
-        // Actualizar seller_orders existentes para órdenes de Datafast
-        // que fueron pagadas exitosamente pero tienen payment_status = 'pending'
-        DB::statement("
-            UPDATE seller_orders so
-            INNER JOIN orders o ON so.order_id = o.id
-            SET 
-                so.payment_status = 'completed',
-                so.payment_method = COALESCE(o.payment_method, 'datafast')
-            WHERE 
-                so.payment_status = 'pending' 
-                AND o.payment_status = 'completed'
-                AND (o.payment_method = 'datafast' OR o.payment_method IS NULL)
-        ");
+        // Verificar si estamos usando SQLite
+        $driver = DB::getDriverName();
+        
+        if ($driver === 'sqlite') {
+            // Para SQLite usar subconsulta en lugar de JOIN
+            DB::statement("
+                UPDATE seller_orders 
+                SET 
+                    payment_status = 'completed',
+                    payment_method = COALESCE(
+                        (SELECT payment_method FROM orders WHERE id = seller_orders.order_id), 
+                        'datafast'
+                    )
+                WHERE 
+                    payment_status = 'pending' 
+                    AND order_id IN (
+                        SELECT id FROM orders 
+                        WHERE payment_status = 'completed' 
+                        AND (payment_method = 'datafast' OR payment_method IS NULL)
+                    )
+            ");
+        } else {
+            // Para MySQL/PostgreSQL usar JOIN
+            DB::statement("
+                UPDATE seller_orders so
+                INNER JOIN orders o ON so.order_id = o.id
+                SET 
+                    so.payment_status = 'completed',
+                    so.payment_method = COALESCE(o.payment_method, 'datafast')
+                WHERE 
+                    so.payment_status = 'pending' 
+                    AND o.payment_status = 'completed'
+                    AND (o.payment_method = 'datafast' OR o.payment_method IS NULL)
+            ");
+        }
 
         // Log para información
         Log::info("Updated {$countToUpdate} Datafast seller orders to completed payment status");

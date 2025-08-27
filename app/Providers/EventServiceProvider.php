@@ -51,6 +51,7 @@ class EventServiceProvider extends ServiceProvider
         // 🎆 NUEVO: Evento para nuevas órdenes
         OrderCreated::class => [
             NotifySellerOfNewOrder::class,
+            \App\Listeners\InvalidateCartCacheListener::class, // 🛒 Invalidar cache del carrito en header
         ],
 
         OrderCompleted::class => [

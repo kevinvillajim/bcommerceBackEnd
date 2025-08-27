@@ -219,7 +219,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertIsArray($data['data']);
         $this->assertNotEmpty($data['data']);
 
-        echo "✅ GET ALL CONFIGURATIONS: PASSED\n";
     }
 
     /** @test */
@@ -242,7 +241,6 @@ class ConfigurationSystemTest extends TestCase
             $this->assertArrayHasKey('data', $data);
             $this->assertIsArray($data['data']);
 
-            echo "✅ GET CATEGORY '{$category}': PASSED\n";
         }
     }
 
@@ -275,7 +273,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(20, $this->configService->getConfig('general.itemsPerPage'));
         $this->assertTrue($this->configService->getConfig('general.maintenanceMode'));
 
-        echo "✅ UPDATE GENERAL CONFIGURATIONS: PASSED\n";
 
         // Test Security configurations with snake_case mapping
         $securityUpdates = [
@@ -300,7 +297,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(7, $this->configService->getConfig('security.accountLockAttempts'));
         $this->assertEquals(180, $this->configService->getConfig('security.sessionTimeout'));
 
-        echo "✅ UPDATE SECURITY CONFIGURATIONS (with mapping): PASSED\n";
 
         // Test Email configurations
         $emailUpdates = [
@@ -324,7 +320,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('New Sender', $this->configService->getConfig('email.senderName'));
         $this->assertFalse($this->configService->getConfig('email.welcomeEmail'));
 
-        echo "✅ UPDATE EMAIL CONFIGURATIONS: PASSED\n";
 
         // Test Payment configurations
         $paymentUpdates = [
@@ -348,7 +343,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(18, $this->configService->getConfig('payment.taxRate'));
         $this->assertFalse($this->configService->getConfig('payment.enablePayPal'));
 
-        echo "✅ UPDATE PAYMENT CONFIGURATIONS: PASSED\n";
     }
 
     /** @test */
@@ -377,7 +371,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertArrayHasKey('validationMessage', $rules);
         $this->assertArrayHasKey('requirements', $rules);
 
-        echo "✅ PASSWORD VALIDATION RULES: PASSED\n";
     }
 
     /** @test */
@@ -392,7 +385,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
 
-        echo "✅ GET VOLUME DISCOUNT CONFIGURATION: PASSED\n";
 
         // Test update volume discount configuration
         $request = new Request([
@@ -415,7 +407,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertTrue($this->configService->getConfig('volume_discounts.stackable'));
         $this->assertFalse($this->configService->getConfig('volume_discounts.show_savings_message'));
 
-        echo "✅ UPDATE VOLUME DISCOUNT CONFIGURATION: PASSED\n";
     }
 
     /** @test */
@@ -430,7 +421,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
 
-        echo "✅ GET RATINGS CONFIGURATION: PASSED\n";
 
         // Test update ratings configuration
         $request = new Request([
@@ -447,7 +437,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertTrue($this->configService->getConfig('ratings.auto_approve_all'));
         $this->assertEquals(4, $this->configService->getConfig('ratings.auto_approve_threshold'));
 
-        echo "✅ UPDATE RATINGS CONFIGURATION: PASSED\n";
     }
 
     /** @test */
@@ -474,7 +463,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertIsBool($this->configService->getConfig('general.maintenanceMode'));
         $this->assertTrue($this->configService->getConfig('general.maintenanceMode'));
 
-        echo "✅ DATA TYPE CONVERSIONS: PASSED\n";
     }
 
     /** @test */
@@ -489,7 +477,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
 
-        echo "✅ GET INDIVIDUAL CONFIGURATION: PASSED\n";
 
         // Test update individual configuration
         $request = new Request([
@@ -503,7 +490,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('success', $data['status']);
         $this->assertEquals('Individual Updated Site', $this->configService->getConfig('general.siteName'));
 
-        echo "✅ UPDATE INDIVIDUAL CONFIGURATION: PASSED\n";
     }
 
     /** @test */
@@ -545,7 +531,6 @@ class ConfigurationSystemTest extends TestCase
             }
             $this->assertTrue($hasAnyKey, "Category {$category} should have at least one of the expected keys");
 
-            echo "✅ CATEGORY '{$category}' VALIDATION: PASSED\n";
         }
     }
 
@@ -572,7 +557,6 @@ class ConfigurationSystemTest extends TestCase
             $this->assertTrue(true); // Expected exception
         }
 
-        echo "✅ AUTHENTICATION & AUTHORIZATION: PASSED\n";
     }
 
     /** @test */
@@ -594,14 +578,10 @@ class ConfigurationSystemTest extends TestCase
         $this->configService->setConfig('test.boolValue', 'true');
         $this->assertTrue($this->configService->getConfig('test.boolValue'));
 
-        echo "✅ CONFIGURATION SERVICE DIRECT: PASSED\n";
     }
 
     public function runAllTests()
     {
-        echo "\n🚀 STARTING COMPREHENSIVE CONFIGURATION SYSTEM TESTS\n";
-        echo '='.str_repeat('=', 60)."\n\n";
-
         try {
             $this->test_can_get_all_configurations();
             $this->test_can_get_configurations_by_category();
@@ -615,18 +595,7 @@ class ConfigurationSystemTest extends TestCase
             $this->test_authentication_and_authorization();
             $this->test_configuration_service_directly();
 
-            echo "\n".str_repeat('=', 60)."\n";
-            echo "🎉 ALL CONFIGURATION SYSTEM TESTS PASSED! 🎉\n";
-            echo "Total categories tested: 12\n";
-            echo "Total endpoints tested: 8\n";
-            echo "Security features verified: ✅\n";
-            echo "Data type conversions: ✅\n";
-            echo "Snake_case mapping: ✅\n";
-            echo str_repeat('=', 60)."\n";
-
         } catch (\Exception $e) {
-            echo "\n❌ TEST FAILED: ".$e->getMessage()."\n";
-            echo 'File: '.$e->getFile().':'.$e->getLine()."\n";
             throw $e;
         }
     }

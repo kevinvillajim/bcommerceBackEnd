@@ -363,51 +363,20 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             $sellerOrder->payment_method = $paymentMethod;
             $sellerOrder->shipping_data = $sellerOrderEntity->getShippingData();
             $sellerOrder->order_number = $sellerOrderEntity->getOrderNumber();
+            
+            // ✅ CRÍTICO: Guardar campos de pricing que estaban faltando
+            $sellerOrder->original_total = $sellerOrderEntity->getOriginalTotal();
+            $sellerOrder->volume_discount_savings = $sellerOrderEntity->getVolumeDiscountSavings();
+            $sellerOrder->volume_discounts_applied = $sellerOrderEntity->getVolumeDiscountsApplied();
+            $sellerOrder->shipping_cost = $sellerOrderEntity->getShippingCost();
+            
             $sellerOrder->save();
 
+            // ✅ CORREGIDO: SellerOrderRepository NO debe crear OrderItems
+            // Los OrderItems los crea EloquentOrderRepository para evitar duplicación
+            // Solo devolvemos los items como están definidos en la entidad
             $items = $sellerOrderEntity->getItems();
             $savedItems = [];
-
-            foreach ($items as $item) {
-                $product = \App\Models\Product::find($item['product_id']);
-
-                $orderItem = new OrderItem;
-                $orderItem->order_id = $sellerOrderEntity->getOrderId();
-                $orderItem->seller_order_id = $sellerOrder->id;
-                $orderItem->product_id = $item['product_id'];
-                $orderItem->quantity = $item['quantity'];
-                $orderItem->price = $item['price'];
-                $orderItem->subtotal = $item['subtotal'] ?? $item['price'] * $item['quantity'];
-
-                $orderItem->product_name = $product ? $product->name : 'Producto no disponible';
-                $orderItem->product_sku = $product ? $product->sku : null;
-                $orderItem->product_image = $product ? $product->getMainImageUrl() : null;
-                $orderItem->seller_id = $product ? $product->seller_id : ($item['seller_id'] ?? null);
-
-                $orderItem->original_price = $item['base_price'] ?? $item['price'];
-                $orderItem->volume_discount_percentage = $item['volume_discount_percentage'] ?? 0;
-                $orderItem->volume_savings = $item['volume_discount_amount'] ?? 0;
-                $orderItem->discount_label = $item['discount_label'] ?? null;
-
-                $orderItem->save();
-
-                $savedItems[] = [
-                    'id' => $orderItem->id,
-                    'product_id' => $orderItem->product_id,
-                    'productId' => $orderItem->product_id,
-                    'product_name' => $orderItem->product_name,
-                    'product_sku' => $orderItem->product_sku,
-                    'product_image' => $orderItem->product_image,
-                    'quantity' => $orderItem->quantity,
-                    'price' => $orderItem->price,
-                    'subtotal' => $orderItem->subtotal,
-                    'original_price' => $orderItem->original_price,
-                    'volume_discount_percentage' => $orderItem->volume_discount_percentage,
-                    'volume_savings' => $orderItem->volume_savings,
-                    'discount_label' => $orderItem->discount_label,
-                    'seller_id' => $orderItem->seller_id,
-                ];
-            }
 
             return SellerOrderEntity::reconstitute(
                 $sellerOrder->id,
@@ -462,53 +431,11 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             $sellerOrder->order_number = $sellerOrderEntity->getOrderNumber();
             $sellerOrder->save();
 
-            if ($sellerOrderEntity->getId() && ! empty($sellerOrderEntity->getItems())) {
-                OrderItem::where('seller_order_id', $sellerOrder->id)->delete();
-            }
-
+            // ✅ CORREGIDO: SellerOrderRepository NO debe crear/eliminar OrderItems
+            // Los OrderItems los maneja EloquentOrderRepository para evitar conflictos
+            // Solo devolvemos los items como están definidos en la entidad
             $items = $sellerOrderEntity->getItems();
             $savedItems = [];
-
-            foreach ($items as $item) {
-                $product = \App\Models\Product::find($item['product_id']);
-
-                $orderItem = new OrderItem;
-                $orderItem->order_id = $sellerOrderEntity->getOrderId();
-                $orderItem->seller_order_id = $sellerOrder->id;
-                $orderItem->product_id = $item['product_id'];
-                $orderItem->quantity = $item['quantity'];
-                $orderItem->price = $item['price'];
-                $orderItem->subtotal = $item['subtotal'] ?? $item['price'] * $item['quantity'];
-
-                $orderItem->product_name = $product ? $product->name : 'Producto no disponible';
-                $orderItem->product_sku = $product ? $product->sku : null;
-                $orderItem->product_image = $product ? $product->getMainImageUrl() : null;
-                $orderItem->seller_id = $product ? $product->seller_id : ($item['seller_id'] ?? null);
-
-                $orderItem->original_price = $item['base_price'] ?? $item['price'];
-                $orderItem->volume_discount_percentage = $item['volume_discount_percentage'] ?? 0;
-                $orderItem->volume_savings = $item['volume_discount_amount'] ?? 0;
-                $orderItem->discount_label = $item['discount_label'] ?? null;
-
-                $orderItem->save();
-
-                $savedItems[] = [
-                    'id' => $orderItem->id,
-                    'product_id' => $orderItem->product_id,
-                    'productId' => $orderItem->product_id,
-                    'product_name' => $orderItem->product_name,
-                    'product_sku' => $orderItem->product_sku,
-                    'product_image' => $orderItem->product_image,
-                    'quantity' => $orderItem->quantity,
-                    'price' => $orderItem->price,
-                    'subtotal' => $orderItem->subtotal,
-                    'original_price' => $orderItem->original_price,
-                    'volume_discount_percentage' => $orderItem->volume_discount_percentage,
-                    'volume_savings' => $orderItem->volume_savings,
-                    'discount_label' => $orderItem->discount_label,
-                    'seller_id' => $orderItem->seller_id,
-                ];
-            }
 
             $sellerOrder->refresh();
 
