@@ -61,10 +61,10 @@ class UnifiedConfigurationController extends Controller
                 'is_valid' => true,
             ];
 
-            Log::info('✅ UNIFIED CONFIG: Configuración unificada generada exitosamente', [
-                'configs_included' => array_keys($unifiedConfig),
-                'volume_discounts_count' => count($unifiedConfig['volume_discounts']),
-            ]);
+            // Log::debug('✅ UNIFIED CONFIG: Configuración unificada generada exitosamente', [
+            //     'configs_included' => array_keys($unifiedConfig),
+            //     'volume_discounts_count' => count($unifiedConfig['volume_discounts']),
+            // ]);
 
             return response()->json([
                 'status' => 'success',

@@ -499,6 +499,7 @@ Route::middleware('jwt.auth')->group(function () {
     Route::prefix('datafast')->group(function () {
         Route::post('/create-checkout', [DatafastController::class, 'createCheckout'])->middleware('throttle:payment');
         Route::post('/verify-payment', [DatafastController::class, 'verifyPayment'])->middleware('throttle:payment');
+        Route::get('/verify-payment/{transactionId}', [DatafastController::class, 'checkPaymentStatus'])->middleware('throttle:payment');
     });
     Route::post('/datafast/webhook', [DatafastController::class, 'webhook'])->middleware('throttle:webhook');
     // Ruta de prueba (solo en desarrollo)
@@ -1065,7 +1066,7 @@ Route::middleware(['deuna.webhook', 'throttle:webhook'])->prefix('webhooks/deuna
 
 // DeUna Testing Routes - For development simulation (no middleware validation)
 Route::prefix('webhooks/deuna')->name('deuna.webhook.')->group(function () {
-    // Simulate payment success (local environment only) - No middleware to allow testing
+    // Simulate payment success - Now also used for processing real QR payments when webhook doesn't trigger
     Route::post('/simulate-payment-success', [DeunaWebhookController::class, 'simulatePaymentSuccess'])->name('simulate-payment-success');
 });
 

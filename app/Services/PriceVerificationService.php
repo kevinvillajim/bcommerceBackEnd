@@ -151,7 +151,9 @@ class PriceVerificationService
             [
                 'product_id' => $productId,
                 'quantity' => $quantity,
-                'seller_id' => (int) $sellerId
+                'seller_id' => (int) $sellerId,
+                'price' => $product->getPrice(), // Agregar precio base del producto
+                'subtotal' => $product->getPrice() * $quantity
             ]
         ];
 

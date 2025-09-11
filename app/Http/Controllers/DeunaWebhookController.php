@@ -152,10 +152,11 @@ class DeunaWebhookController extends Controller
      */
     public function simulatePaymentSuccess(Request $request): JsonResponse
     {
-        if (config('app.env') !== 'local') {
+        // Only allow simulation in development/staging environments
+        if (config('app.env') === 'production') {
             return response()->json([
                 'success' => false,
-                'message' => 'Simulation endpoint only available in local environment',
+                'message' => 'Simulation endpoint not available in production',
             ], 403);
         }
 

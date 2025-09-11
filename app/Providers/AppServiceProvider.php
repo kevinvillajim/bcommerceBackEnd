@@ -168,15 +168,15 @@ class AppServiceProvider extends ServiceProvider
         // Configure Carbon's default timezone for new instances
         Carbon::setLocale(config('app.locale', 'es'));
         
-        // Log timezone configuration for verification
-        if (config('app.debug')) {
-            $now = Carbon::now();
-            \Log::info('Ecuador Timezone Configuration', [
-                'php_timezone' => date_default_timezone_get(),
-                'carbon_timezone' => $now->timezoneName,
-                'current_time' => $now->format('Y-m-d H:i:s P'),
-                'offset' => $now->format('P'),
-            ]);
-        }
+        // Log timezone configuration for verification (commented to avoid log spam)
+        // if (config('app.debug')) {
+        //     $now = Carbon::now();
+        //     \Log::debug('Ecuador Timezone Configuration', [
+        //         'php_timezone' => date_default_timezone_get(),
+        //         'carbon_timezone' => $now->timezoneName,
+        //         'current_time' => $now->format('Y-m-d H:i:s P'),
+        //         'offset' => $now->format('P'),
+        //     ]);
+        // }
     }
 }

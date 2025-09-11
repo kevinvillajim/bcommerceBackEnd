@@ -75,11 +75,16 @@ class DatafastService implements PaymentGatewayInterface
                 Log::info('Datafast: Usando Fase 1 (datos básicos)');
             }
 
-            Log::info('Datafast: Creando checkout', [
+            Log::info('🚀 Datafast: Iniciando creación de checkout', [
                 'url' => $url,
                 'entity_id' => $this->entityId,
                 'amount' => $data['amount'] ?? null,
+                'currency' => $data['currency'] ?? 'USD',
+                'payment_type' => $data['paymentType'] ?? 'DB',
                 'data_count' => count($data),
+                'has_customer_data' => isset($orderData['customer']),
+                'has_shipping_data' => isset($orderData['shipping']),
+                'phase' => $this->usePhase2 ? 2 : 1,
             ]);
 
             // Log de datos sensibles solo en desarrollo
@@ -97,17 +102,31 @@ class DatafastService implements PaymentGatewayInterface
 
             $responseData = $response->json();
 
-            Log::info('Datafast: Respuesta de checkout', [
-                'status' => $response->status(),
-                'has_id' => isset($responseData['id']),
+            Log::info('✅ Datafast: Respuesta recibida de checkout', [
+                'http_status' => $response->status(),
+                'has_checkout_id' => isset($responseData['id']),
+                'checkout_id' => $responseData['id'] ?? null,
                 'result_code' => $responseData['result']['code'] ?? null,
+                'result_description' => $responseData['result']['description'] ?? null,
+                'response_successful' => $response->successful(),
+                'raw_response' => config('app.debug') ? $responseData : null,
             ]);
 
             if ($response->successful() && isset($responseData['id'])) {
+                // Construir la URL del widget con el checkoutId
+                $widgetBaseUrl = rtrim($this->baseUrl, '/').'/v1/paymentWidgets.js';
+                $widgetUrl = $widgetBaseUrl.'?checkoutId='.$responseData['id'];
+                
+                Log::info('✅ Checkout creado con éxito', [
+                    'checkout_id' => $responseData['id'],
+                    'widget_url' => $widgetUrl,
+                    'base_url' => $this->baseUrl
+                ]);
+                
                 return [
                     'success' => true,
                     'checkout_id' => $responseData['id'],
-                    'widget_url' => $this->baseUrl.'/v1/paymentWidgets.js?checkoutId='.$responseData['id'],
+                    'widget_url' => $widgetUrl,
                     'message' => 'Checkout creado exitosamente',
                 ];
             }
@@ -238,7 +257,8 @@ class DatafastService implements PaymentGatewayInterface
             // 'testMode' => 'EXTERNAL', // Comentado para producción
 
             // URL de resultado para redirección después del pago
-            'shopperResultUrl' => config('app.url').'/datafast-result',
+            // Usar el puerto correcto del frontend (3003 en tu caso)
+            'shopperResultUrl' => env('FRONTEND_URL', 'http://localhost:3003').'/datafast-result',
 
             // Parámetros personalizados - Impuestos (formato exacto)
             'customParameters[SHOPPER_VAL_BASE0]' => number_format($base0, 2, '.', ''),
@@ -418,9 +438,18 @@ class DatafastService implements PaymentGatewayInterface
 
             $responseData = $response->json();
 
-            Log::info('Datafast: Respuesta de verificación', [
-                'status' => $response->status(),
+            Log::info('🔍 Datafast: Respuesta de verificación de pago', [
+                'http_status' => $response->status(),
                 'result_code' => $responseData['result']['code'] ?? 'no_code',
+                'result_description' => $responseData['result']['description'] ?? null,
+                'payment_brand' => $responseData['paymentBrand'] ?? null,
+                'payment_type' => $responseData['paymentType'] ?? null,
+                'amount' => $responseData['amount'] ?? null,
+                'currency' => $responseData['currency'] ?? null,
+                'has_payment_id' => isset($responseData['id']),
+                'payment_id' => $responseData['id'] ?? null,
+                'response_successful' => $response->successful(),
+                'raw_response' => config('app.debug') ? $responseData : null,
             ]);
 
             // Manejar errores de autorización comunes en Fase 1

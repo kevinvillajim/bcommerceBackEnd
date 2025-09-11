@@ -28,19 +28,25 @@ return [
         'http://localhost:3000',
         'http://localhost:3001', 
         'http://localhost:3002',
+        'http://localhost:3003',
+        'http://localhost:3004',
+        'http://localhost:3005',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
         'http://127.0.0.1:3002',
+        'http://127.0.0.1:3003',
         'https://localhost:3000',
+        'https://localhost:3003',
         'https://127.0.0.1:3000',
+        'https://127.0.0.1:3003',
+        // URLs de Datafast
+        'https://eu-test.oppwa.com',
+        'https://eu-prod.oppwa.com',
+        'https://www.datafast.com.ec',
+        'https://p11.techlab-cdn.com',
     ]),
 
-    'allowed_origins_patterns' => array_filter([
-        env('CORS_ALLOWED_ORIGIN_PATTERN'),
-        // Patrones flexibles para desarrollo
-        '/^https?:\/\/localhost:\d+$/',                   // localhost con cualquier puerto
-        '/^https?:\/\/127\.0\.0\.1:\d+$/',              // 127.0.0.1 con cualquier puerto
-    ]),
+    'allowed_origins_patterns' => [],
 
     'allowed_headers' => [
         'Accept',

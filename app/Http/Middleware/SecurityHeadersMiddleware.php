@@ -20,6 +20,12 @@ class SecurityHeadersMiddleware
             !str_contains($response->headers->get('Content-Type'), 'text/html')) {
             return $response;
         }
+        
+        // TEMPORALMENTE DESACTIVADO EN DESARROLLO PARA DATAFAST
+        // El widget de Datafast tiene su propio CSP embebido que entra en conflicto
+        if (config('app.env') === 'local') {
+            return $response;
+        }
 
         // Get allowed origins from CORS config
         $frontendUrl = config('cors.allowed_origins')[0] ?? 'https://comersia.app';
@@ -31,15 +37,16 @@ class SecurityHeadersMiddleware
         // Content Security Policy - Restrictive but functional
         $csp = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.google.com https://www.gstatic.com",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "img-src 'self' data: https: blob:",
-            "font-src 'self' https://fonts.gstatic.com",
-            "connect-src 'self' https://api.comersia.app https://{$domain} https://apis.google.com",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.google.com https://www.gstatic.com https://p11.techlab-cdn.com https://eu-test.oppwa.com https://eu-prod.oppwa.com https://www.datafast.com.ec http://localhost:* http://127.0.0.1:*",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://eu-test.oppwa.com https://eu-prod.oppwa.com https://www.datafast.com.ec",
+            "img-src 'self' data: https: blob: http://localhost:* http://127.0.0.1:*",
+            "font-src 'self' https://fonts.gstatic.com https://eu-test.oppwa.com https://eu-prod.oppwa.com",
+            "connect-src 'self' https://api.comersia.app https://{$domain} https://apis.google.com https://eu-test.oppwa.com https://eu-prod.oppwa.com https://www.datafast.com.ec https://p11.techlab-cdn.com http://localhost:* http://127.0.0.1:*",
             "media-src 'self' data: blob:",
             "object-src 'none'",
             "base-uri 'self'",
-            "form-action 'self'",
+            "form-action 'self' https://eu-test.oppwa.com https://eu-prod.oppwa.com",
+            "frame-src 'self' https://eu-test.oppwa.com https://eu-prod.oppwa.com",
             "frame-ancestors 'none'",
             "upgrade-insecure-requests",
         ];

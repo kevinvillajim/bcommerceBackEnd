@@ -59,7 +59,7 @@ return [
 
         // URLs de ambiente (Según sitio oficial developers.datafast.com.ec)
         'test_url' => env('DATAFAST_TEST_URL', 'https://eu-test.oppwa.com'),
-        'production_url' => env('DATAFAST_PRODUCTION_URL', 'https://oppwa.com'),
+        'production_url' => env('DATAFAST_PRODUCTION_URL', 'https://eu-prod.oppwa.com'),
 
         // Configuración de pruebas (Fase 1) - REMOVED HARDCODED VALUES FOR SECURITY
         'test' => [

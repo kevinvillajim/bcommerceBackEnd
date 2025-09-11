@@ -280,6 +280,155 @@ class DatafastController extends Controller
     }
 
     /**
+     * Verificar el estado del pago por transaction ID (sin resource path)
+     */
+    public function checkPaymentStatus($transactionId)
+    {
+        try {
+            $user = auth()->user();
+            
+            Log::info('Datafast: Verificando estado del pago por transactionId', [
+                'transaction_id' => $transactionId,
+                'user_id' => $user->id ?? 'guest',
+            ]);
+
+            // Buscar registro de transacción Datafast
+            $datafastPayment = DatafastPayment::where('transaction_id', $transactionId)->first();
+
+            if (!$datafastPayment) {
+                Log::warning('Datafast: No se encontró registro de transacción para verificación', [
+                    'transaction_id' => $transactionId,
+                ]);
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Transacción no encontrada',
+                    'data' => [
+                        'payment_status' => 'not_found',
+                        'transaction_id' => $transactionId,
+                    ]
+                ], 404);
+            }
+
+            // Si el pago ya está completado, devolver el estado
+            if ($datafastPayment->status === 'completed') {
+                Log::info('Datafast: Pago ya completado', [
+                    'transaction_id' => $transactionId,
+                    'order_id' => $datafastPayment->order_id,
+                ]);
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Pago completado exitosamente',
+                    'data' => [
+                        'payment_status' => 'completed',
+                        'transaction_id' => $transactionId,
+                        'order_id' => $datafastPayment->order_id,
+                        'checkout_id' => $datafastPayment->checkout_id,
+                        'amount' => $datafastPayment->amount,
+                    ]
+                ]);
+            }
+
+            // Si el pago falló, devolver el estado
+            if ($datafastPayment->status === 'failed') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $datafastPayment->error_message ?? 'Pago fallido',
+                    'data' => [
+                        'payment_status' => 'failed',
+                        'transaction_id' => $transactionId,
+                        'error_code' => $datafastPayment->result_code,
+                    ]
+                ]);
+            }
+
+            // Si tiene checkout_id pero no resource_path, el pago está pendiente
+            if ($datafastPayment->checkout_id && !$datafastPayment->resource_path) {
+                Log::info('Datafast: Pago pendiente, esperando completar el formulario', [
+                    'transaction_id' => $transactionId,
+                    'checkout_id' => $datafastPayment->checkout_id,
+                ]);
+
+                // Intentar verificar con Datafast directamente usando checkout_id
+                try {
+                    // Construir un resource path temporal para verificación
+                    $tempResourcePath = "/v1/checkouts/{$datafastPayment->checkout_id}/payment";
+                    $result = $this->datafastService->verifyPayment($tempResourcePath);
+                    
+                    Log::info('Datafast: Resultado de verificación directa', [
+                        'transaction_id' => $transactionId,
+                        'result' => $result,
+                    ]);
+
+                    if ($result['success']) {
+                        // Actualizar el estado del pago
+                        $datafastPayment->update([
+                            'status' => 'completed',
+                            'verification_data' => $result,
+                            'result_code' => $result['result_code'] ?? null,
+                            'verification_completed_at' => now(),
+                        ]);
+
+                        return response()->json([
+                            'status' => 'success',
+                            'message' => 'Pago verificado exitosamente',
+                            'data' => [
+                                'payment_status' => 'completed',
+                                'transaction_id' => $transactionId,
+                                'checkout_id' => $datafastPayment->checkout_id,
+                                'amount' => $result['amount'] ?? $datafastPayment->amount,
+                            ]
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Datafast: No se pudo verificar directamente con checkout_id', [
+                        'transaction_id' => $transactionId,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+
+                return response()->json([
+                    'status' => 'pending',
+                    'message' => 'Pago pendiente de completar',
+                    'data' => [
+                        'payment_status' => 'pending',
+                        'transaction_id' => $transactionId,
+                        'checkout_id' => $datafastPayment->checkout_id,
+                        'widget_url' => $datafastPayment->widget_url,
+                    ]
+                ]);
+            }
+
+            // Estado de procesamiento
+            return response()->json([
+                'status' => 'processing',
+                'message' => 'Pago en proceso',
+                'data' => [
+                    'payment_status' => $datafastPayment->status,
+                    'transaction_id' => $transactionId,
+                    'checkout_id' => $datafastPayment->checkout_id,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al verificar estado del pago de Datafast', [
+                'error' => $e->getMessage(),
+                'transaction_id' => $transactionId,
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Error al verificar el estado del pago',
+                'data' => [
+                    'payment_status' => 'error',
+                    'error' => config('app.debug') ? $e->getMessage() : 'Error interno',
+                ]
+            ], 500);
+        }
+    }
+
+    /**
      * Verificar el estado del pago después del proceso de Datafast
      */
     public function verifyPayment(Request $request)
