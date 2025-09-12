@@ -2,6 +2,11 @@
 
 namespace App\Providers;
 
+use App\Domain\Repositories\AccountingRepositoryInterface;
+use App\Infrastructure\Repositories\EloquentAccountingRepository;
+use App\UseCases\Accounting\GenerateAccountingReportUseCase;
+use App\UseCases\Accounting\GenerateInvoiceFromOrderUseCase;
+use App\UseCases\Accounting\GenerateInvoicePdfUseCase;
 use Illuminate\Support\ServiceProvider;
 
 class AccountingServiceProvider extends ServiceProvider
@@ -11,21 +16,25 @@ class AccountingServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Registrar interfaces y repositorios
-        $this->app->bind(
-            \App\Domain\Repositories\AccountingRepositoryInterface::class,
-            \App\Infrastructure\Repositories\EloquentAccountingRepository::class
-        );
+        // Registrar el repositorio de contabilidad
+        $this->app->bind(AccountingRepositoryInterface::class, EloquentAccountingRepository::class);
 
-        $this->app->bind(
-            \App\Domain\Repositories\InvoiceRepositoryInterface::class,
-            \App\Infrastructure\Repositories\EloquentInvoiceRepository::class
-        );
+        // Registrar casos de uso de contabilidad
+        $this->app->bind(GenerateAccountingReportUseCase::class, function ($app) {
+            return new GenerateAccountingReportUseCase(
+                $app->make(AccountingRepositoryInterface::class)
+            );
+        });
 
-        $this->app->bind(
-            \App\Domain\Interfaces\SriServiceInterface::class,
-            \App\Infrastructure\External\SRI\SriService::class
-        );
+        $this->app->bind(GenerateInvoiceFromOrderUseCase::class, function ($app) {
+            return new GenerateInvoiceFromOrderUseCase(
+                $app->make(AccountingRepositoryInterface::class)
+            );
+        });
+
+        $this->app->bind(GenerateInvoicePdfUseCase::class, function ($app) {
+            return new GenerateInvoicePdfUseCase();
+        });
     }
 
     /**

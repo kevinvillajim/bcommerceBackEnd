@@ -644,6 +644,7 @@ class DatafastController extends Controller
                 'payment_id' => $result['payment_id'],
                 'status' => 'completed',
                 'amount' => $calculatedTotal,
+                'skip_price_verification' => true, // ✅ Saltarse verificación de precios para Datafast
             ];
 
             // Preparar datos de envío
@@ -891,6 +892,22 @@ class DatafastController extends Controller
 
         // Crear seller_orders manualmente
         $this->createSellerOrdersForOrder($order, $cart->getItems(), $calculatedTotal);
+
+        // ✅ CRÍTICO: Disparar evento OrderCreated para generación de facturas
+        Log::info('🚀 DATAFAST FALLBACK: Disparando evento OrderCreated para generación de facturas', [
+            'order_id' => $order->getId(),
+            'user_id' => $order->getUserId(),
+            'seller_id' => $order->getSellerId()
+        ]);
+
+        event(new \App\Events\OrderCreated(
+            $order->getId(),
+            $order->getUserId(),
+            $order->getSellerId(),
+            ['method' => 'datafast_fallback']
+        ));
+
+        Log::info('✅ DATAFAST FALLBACK: Evento OrderCreated disparado');
 
         return $order;
     }

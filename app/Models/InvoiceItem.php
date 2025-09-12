@@ -12,23 +12,23 @@ class InvoiceItem extends Model
     protected $fillable = [
         'invoice_id',
         'product_id',
-        'description',
-        'quantity',
-        'unit_price',
-        'discount',
-        'tax_rate',
-        'tax_amount',
-        'total',
-        'sri_product_code',
+        'product_code',    // slug del producto (único) - codigoPrincipal para SRI
+        'product_name',    // name del producto - descripcion para SRI
+        'quantity',        // cantidad
+        'unit_price',      // precioUnitario
+        'discount',        // descuento (siempre 0 por ahora)
+        'subtotal',        // precioTotalSinImpuesto
+        'tax_rate',        // tarifa IVA (15.00)
+        'tax_amount',      // valor IVA
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
         'discount' => 'decimal:2',
+        'subtotal' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'tax_amount' => 'decimal:2',
-        'total' => 'decimal:2',
     ];
 
     public function invoice()

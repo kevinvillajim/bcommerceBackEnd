@@ -1,0 +1,79 @@
+<?php
+
+namespace App\UseCases\Accounting;
+
+use App\Models\Invoice;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Exception;
+
+class GenerateInvoicePdfUseCase
+{
+    /**
+     * Genera un PDF de una factura aprobada por el SRI
+     */
+    public function execute(Invoice $invoice, array $sriResponse = []): string
+    {
+        Log::info('Iniciando generación de PDF para factura', [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number
+        ]);
+
+        try {
+            // ✅ Validación: la factura debe estar aprobada por el SRI
+            if ($invoice->status !== Invoice::STATUS_APPROVED) {
+                throw new Exception("No se puede generar PDF: la factura {$invoice->invoice_number} no está aprobada por el SRI");
+            }
+
+            // ✅ Cargar relaciones necesarias para el PDF
+            $invoice->load(['order.items.product', 'order.user']);
+
+            // ✅ Preparar datos para la plantilla del PDF
+            $pdfData = [
+                'invoice' => $invoice,
+                'order' => $invoice->order,
+                'customer' => $invoice->order->user,
+                'items' => $invoice->order->items,
+                'sriResponse' => $sriResponse,
+                'generatedAt' => now(),
+            ];
+
+            // ✅ Generar PDF usando una vista blade
+            $pdf = Pdf::loadView('invoices.pdf-template', $pdfData);
+            
+            // ✅ Configurar orientación y tamaño
+            $pdf->setPaper('A4', 'portrait');
+            
+            // ✅ Generar nombre único para el archivo
+            $fileName = "invoice_{$invoice->invoice_number}_{$invoice->id}.pdf";
+            $filePath = "invoices/{$fileName}";
+            
+            // ✅ Guardar el PDF en storage
+            $pdfContent = $pdf->output();
+            Storage::disk('public')->put($filePath, $pdfContent);
+            
+            // ✅ Actualizar la factura con la ruta del PDF
+            $invoice->update([
+                'pdf_path' => $filePath,
+                'pdf_generated_at' => now()
+            ]);
+
+            Log::info('PDF de factura generado exitosamente', [
+                'invoice_id' => $invoice->id,
+                'pdf_path' => $filePath
+            ]);
+
+            return $filePath;
+
+        } catch (Exception $e) {
+            Log::error('Error generando PDF de factura', [
+                'invoice_id' => $invoice->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            throw $e;
+        }
+    }
+}

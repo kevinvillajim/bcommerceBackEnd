@@ -18,7 +18,11 @@ use App\Events\SellerRankChanged;
 use App\Events\SellerStrikeAdded;
 use App\Events\ShippingDelayed;
 use App\Events\ShippingStatusUpdated;
+use App\Events\InvoiceGenerated;
+use App\Events\InvoiceApproved;
 use App\Listeners\GenerateInvoiceListener;
+use App\Listeners\GenerateInvoiceFromOrderListener;
+use App\Listeners\SendInvoiceToSriListener;
 use App\Listeners\NotifyAdminOfFeedback;
 use App\Listeners\NotifyAdminSellerRankUp;
 use App\Listeners\NotifySellerOfAccountBlock;
@@ -37,6 +41,7 @@ use App\Listeners\SendProductUpdateNotifications;
 use App\Listeners\SendRatingReceivedNotification;
 use App\Listeners\SendRatingRequestNotification;
 use App\Listeners\SendShippingStatusNotification;
+use App\Listeners\GeneratePdfFromInvoiceListener;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 
@@ -52,10 +57,20 @@ class EventServiceProvider extends ServiceProvider
         OrderCreated::class => [
             NotifySellerOfNewOrder::class,
             \App\Listeners\InvalidateCartCacheListener::class, // 🛒 Invalidar cache del carrito en header
+            GenerateInvoiceFromOrderListener::class, // ✅ Generar factura automáticamente
+        ],
+
+        // ✅ NUEVO: Evento para facturas generadas
+        InvoiceGenerated::class => [
+            SendInvoiceToSriListener::class, // ✅ Enviar automáticamente al SRI
+        ],
+
+        // ✅ NUEVO: Evento para facturas aprobadas por SRI
+        InvoiceApproved::class => [
+            GeneratePdfFromInvoiceListener::class, // ✅ Generar PDF automáticamente
         ],
 
         OrderCompleted::class => [
-            GenerateInvoiceListener::class,
             SendRatingRequestNotification::class,
         ],
 

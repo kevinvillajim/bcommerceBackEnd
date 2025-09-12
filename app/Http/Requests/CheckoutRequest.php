@@ -50,8 +50,9 @@ class CheckoutRequest extends FormRequest
             'shipping.address' => 'required|string|max:500',
             'shipping.city' => 'required|string|max:100',
             'shipping.state' => 'required|string|max:100',
-            'shipping.postal_code' => 'required|string|max:20',
+            'shipping.postal_code' => 'sometimes|nullable|string|max:20',
             'shipping.country' => 'required|string|max:100',
+            'shipping.identification' => 'required|string|min:10|max:13|regex:/^\d{10}(\d{3})?$/',
             'shipping.notes' => 'sometimes|string|max:1000',
 
             // ✅ NUEVO: Validación para items con precios
@@ -110,8 +111,11 @@ class CheckoutRequest extends FormRequest
             'shipping.address.required' => 'La dirección es requerida.',
             'shipping.city.required' => 'La ciudad es requerida.',
             'shipping.state.required' => 'El estado/provincia es requerido.',
-            'shipping.postal_code.required' => 'El código postal es requerido.',
             'shipping.country.required' => 'El país es requerido.',
+            'shipping.identification.required' => 'La cédula/RUC es requerida.',
+            'shipping.identification.min' => 'La cédula debe tener al menos 10 dígitos.',
+            'shipping.identification.max' => 'El RUC no puede tener más de 13 dígitos.',
+            'shipping.identification.regex' => 'La cédula debe tener 10 dígitos o RUC 13 dígitos terminando en 001.',
 
             // ✅ NUEVOS: Mensajes para items
             'items.required' => 'Los items del carrito son requeridos.',
@@ -251,6 +255,7 @@ class CheckoutRequest extends FormRequest
             'shipping.state' => 'estado/provincia',
             'shipping.postal_code' => 'código postal',
             'shipping.country' => 'país',
+            'shipping.identification' => 'cédula/RUC',
             'shipping.notes' => 'notas adicionales',
             'items' => 'items del carrito',
             'items.*.product_id' => 'ID del producto',

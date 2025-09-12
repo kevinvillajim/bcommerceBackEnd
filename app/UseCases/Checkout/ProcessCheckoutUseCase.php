@@ -197,8 +197,15 @@ class ProcessCheckoutUseCase
                 ]);
 
                 // 4. 🔒 SECURITY: Verificar integridad de precios (anti-tampering) - INCLUYE TODOS LOS DESCUENTOS
-                if (!$this->priceVerificationService->verifyItemPrices($processedItems, $userId, $discountCode)) {
-                    throw new \Exception('Security: Price tampering detected. Transaction blocked.');
+                if (!empty($paymentData['skip_price_verification'])) {
+                    Log::info('🔓 SECURITY: Saltando verificación de precios (método de pago confiable)', [
+                        'payment_method' => $paymentData['method'] ?? 'unknown',
+                        'user_id' => $userId
+                    ]);
+                } else {
+                    if (!$this->priceVerificationService->verifyItemPrices($processedItems, $userId, $discountCode)) {
+                        throw new \Exception('Security: Price tampering detected. Transaction blocked.');
+                    }
                 }
                 
                 // Verificar totales calculados si se proporcionan

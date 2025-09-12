@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountingController;
 // Controller imports
+use App\Http\Controllers\Admin\AdminInvoiceController;
 use App\Http\Controllers\Admin\AdminLogController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminRatingController;
@@ -835,6 +836,28 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::get('/income-statement', [AccountingController::class, 'incomeStatement']);
         Route::get('/accounts', [AccountingController::class, 'accounts']);
         Route::get('/accounts/{id}/ledger', [AccountingController::class, 'accountLedger']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Management Routes (for admins) - SRI System
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('invoices')->group(function () {
+        // Lista paginada de facturas con filtros
+        Route::get('/', [AdminInvoiceController::class, 'index']);
+        
+        // Detalles completos de una factura
+        Route::get('/{id}', [AdminInvoiceController::class, 'show']);
+        
+        // Reintenta una factura fallida
+        Route::post('/{id}/retry', [AdminInvoiceController::class, 'retry']);
+        
+        // Consulta estado actual en SRI
+        Route::get('/{id}/check-status', [AdminInvoiceController::class, 'checkStatus']);
+        
+        // Estadísticas de facturas para dashboard
+        Route::get('/stats/overview', [AdminInvoiceController::class, 'stats']);
     });
 
     /*

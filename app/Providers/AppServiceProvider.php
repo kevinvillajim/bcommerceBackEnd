@@ -20,7 +20,6 @@ class AppServiceProvider extends ServiceProvider
         RepositoryServiceProvider::class,
         InterfacesServiceProvider::class,
         AuthServiceProvider::class,
-        AccountingServiceProvider::class,
         MailServiceProvider::class, // ✅ Mail system provider
         TimezoneServiceProvider::class, // ✅ Ecuador timezone configuration
 
@@ -40,16 +39,9 @@ class AppServiceProvider extends ServiceProvider
         ChatServiceProvider::class,
         DatafastServiceProvider::class,
         PricingServiceProvider::class,
+        AccountingServiceProvider::class, // ✅ Sistema de contabilidad y SRI
     ];
 
-    /**
-     * Mapeo de eventos a listeners
-     */
-    protected $listen = [
-        'App\Events\OrderCompleted' => [
-            'App\Listeners\GenerateInvoiceListener',
-        ],
-    ];
 
     /**
      * Register any application services.
