@@ -44,6 +44,7 @@ class DatafastPayment extends Model
         'shipping_address',
         'shipping_city',
         'shipping_country',
+        'shipping_identification',
 
         // Información técnica
         'environment',

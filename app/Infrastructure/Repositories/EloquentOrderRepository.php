@@ -101,15 +101,36 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 $order->payment_method = $orderEntity->getPaymentMethod();
                 $order->payment_status = $orderEntity->getPaymentStatus();
 
-                // ✅ CORREGIR: shipping_data - convertir array a JSON string si es necesario
+                // ✅ CORREGIDO: shipping_data - dejar que Laravel cast 'array' maneje el JSON automáticamente
                 $shippingData = $orderEntity->getShippingData();
+                
+                // 🔍 LOGGING TEMPORAL: Tracking de shipping_data persistence
+                Log::info("🔍 EloquentOrderRepository.save() - SHIPPING_DATA TRACKING", [
+                    'order_id' => $orderEntity->getId(),
+                    'shipping_data_from_entity' => $shippingData,
+                    'shipping_data_type' => gettype($shippingData),
+                    'is_array' => is_array($shippingData),
+                    'has_identification' => is_array($shippingData) && isset($shippingData['identification']),
+                    'identification_value' => is_array($shippingData) ? ($shippingData['identification'] ?? 'NO_SET') : 'NOT_ARRAY',
+                    'shipping_data_count' => is_array($shippingData) ? count($shippingData) : 'NOT_COUNTABLE'
+                ]);
+                
+                // ✅ CORRECCIÓN CRÍTICA: Pasar array directamente, Laravel cast 'array' hará json_encode() automáticamente
                 if (is_array($shippingData)) {
-                    $order->shipping_data = json_encode($shippingData);
+                    $order->shipping_data = $shippingData;  // ✅ ARRAY DIRECTO
                 } elseif (is_string($shippingData)) {
-                    $order->shipping_data = $shippingData;
+                    $order->shipping_data = json_decode($shippingData, true) ?: [];  // ✅ DECODIFICAR PRIMERO
                 } else {
-                    $order->shipping_data = json_encode([]);
+                    $order->shipping_data = [];  // ✅ ARRAY VACÍO
                 }
+                
+                // 🔍 LOGGING TEMPORAL: Verificar qué se pasará a Laravel
+                Log::info("🔍 EloquentOrderRepository.save() - ARRAY PARA LARAVEL CAST", [
+                    'order_id' => $orderEntity->getId(),
+                    'shipping_data_array' => $order->shipping_data,
+                    'is_array' => is_array($order->shipping_data),
+                    'array_count' => is_array($order->shipping_data) ? count($order->shipping_data) : 'NOT_ARRAY'
+                ]);
 
                 // ✅ CAMPOS DE DESCUENTOS POR VOLUMEN CON VALORES POR DEFECTO Y VALIDACIÓN DE MÉTODOS
                 if (method_exists($orderEntity, 'getOriginalTotal') && $orderEntity->getOriginalTotal() !== null) {
@@ -423,11 +444,28 @@ class EloquentOrderRepository implements OrderRepositoryInterface
 
     public function updatePaymentInfo(int $orderId, array $paymentInfo): bool
     {
+        Log::info("🔄 EloquentOrderRepository.updatePaymentInfo INICIADO", [
+            'orderId' => $orderId,
+            'paymentInfo' => $paymentInfo
+        ]);
+
         $order = Order::find($orderId);
 
         if (! $order) {
+            Log::error("❌ ORDER NO ENCONTRADA", ['orderId' => $orderId]);
             return false;
         }
+
+        Log::info("✅ ORDER ENCONTRADA", [
+            'orderId' => $orderId,
+            'current_payment_status' => $order->payment_status,
+            'current_payment_id' => $order->payment_id,
+            'current_payment_method' => $order->payment_method
+        ]);
+
+        $oldPaymentStatus = $order->payment_status;
+        $oldPaymentId = $order->payment_id;
+        $oldPaymentMethod = $order->payment_method;
 
         $order->payment_id = $paymentInfo['payment_id'] ?? $order->payment_id;
         $order->payment_status = $paymentInfo['payment_status'] ?? $order->payment_status;
@@ -443,7 +481,49 @@ class EloquentOrderRepository implements OrderRepositoryInterface
             $order->status = $paymentInfo['status'];
         }
 
-        return $order->save();
+        Log::info("🔄 CAMPOS ACTUALIZADOS ANTES DEL SAVE", [
+            'orderId' => $orderId,
+            'changes' => [
+                'payment_id' => ['old' => $oldPaymentId, 'new' => $order->payment_id],
+                'payment_status' => ['old' => $oldPaymentStatus, 'new' => $order->payment_status],
+                'payment_method' => ['old' => $oldPaymentMethod, 'new' => $order->payment_method]
+            ],
+            'isDirty' => $order->isDirty(),
+            'dirtyFields' => $order->getDirty()
+        ]);
+
+        try {
+            $saveResult = $order->save();
+            
+            if ($saveResult) {
+                // Verificar que realmente se guardó releyendo desde BD
+                $savedOrder = Order::find($orderId);
+                Log::info("✅ ORDER.SAVE() EXITOSO - VERIFICANDO PERSISTENCIA", [
+                    'orderId' => $orderId,
+                    'saveResult' => $saveResult,
+                    'verification' => [
+                        'payment_id' => $savedOrder->payment_id,
+                        'payment_status' => $savedOrder->payment_status,
+                        'payment_method' => $savedOrder->payment_method
+                    ],
+                    'wasActuallyPersisted' => $savedOrder->payment_status === $paymentInfo['payment_status']
+                ]);
+            } else {
+                Log::error("❌ ORDER.SAVE() FALLÓ", [
+                    'orderId' => $orderId,
+                    'saveResult' => $saveResult
+                ]);
+            }
+            
+            return $saveResult;
+        } catch (\Exception $e) {
+            Log::error("❌ EXCEPCIÓN EN ORDER.SAVE()", [
+                'orderId' => $orderId,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return false;
+        }
     }
 
     public function findOrdersByUserId(int $userId): array

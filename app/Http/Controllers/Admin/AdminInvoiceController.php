@@ -349,6 +349,108 @@ class AdminInvoiceController extends Controller
     }
 
     /**
+     * Actualiza los datos editables de una factura
+     */
+    public function update(Request $request, $id): JsonResponse
+    {
+        try {
+            $invoice = Invoice::find($id);
+
+            if (!$invoice) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ], 404);
+            }
+
+            // Validar que la factura puede ser editada (no debe estar autorizada)
+            if (in_array($invoice->status, [Invoice::STATUS_AUTHORIZED])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede editar una factura autorizada por el SRI'
+                ], 400);
+            }
+
+            // Validar datos de entrada
+            $validatedData = $request->validate([
+                'customer_name' => 'sometimes|required|string|max:255',
+                'customer_identification' => 'sometimes|required|string|max:13|min:10',
+                'customer_email' => 'sometimes|nullable|email|max:255',
+                'customer_address' => 'sometimes|required|string|max:500',
+                'customer_phone' => 'sometimes|nullable|string|max:20',
+            ]);
+
+            // Si se actualiza la identificación, recalcular el tipo
+            if (isset($validatedData['customer_identification'])) {
+                $identification = $validatedData['customer_identification'];
+                $length = strlen($identification);
+                
+                if ($length === 10) {
+                    $validatedData['customer_identification_type'] = '05'; // Cédula
+                } elseif ($length === 13 && substr($identification, -3) === '001') {
+                    $validatedData['customer_identification_type'] = '04'; // RUC
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Identificación inválida. Debe ser cédula (10 dígitos) o RUC (13 dígitos terminado en 001)'
+                    ], 400);
+                }
+            }
+
+            // Guardar datos anteriores para log
+            $oldData = [
+                'customer_name' => $invoice->customer_name,
+                'customer_identification' => $invoice->customer_identification,
+                'customer_email' => $invoice->customer_email,
+                'customer_address' => $invoice->customer_address,
+                'customer_phone' => $invoice->customer_phone,
+            ];
+
+            // Actualizar factura
+            $invoice->update($validatedData);
+
+            // Log de cambios para auditoría
+            Log::info('Factura editada manualmente por admin', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'admin_user' => auth()->user()->name ?? 'Admin',
+                'old_data' => $oldData,
+                'new_data' => array_intersect_key($invoice->toArray(), $validatedData),
+                'changed_fields' => array_keys($validatedData)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Factura actualizada correctamente',
+                'data' => [
+                    'invoice_id' => $invoice->id,
+                    'updated_fields' => array_keys($validatedData)
+                ]
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Datos inválidos',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Error actualizando factura', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar la factura',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Obtiene estadísticas de facturas para el dashboard admin
      */
     public function stats(Request $request): JsonResponse
@@ -360,7 +462,7 @@ class AdminInvoiceController extends Controller
             $recentInvoices = Invoice::orderBy('created_at', 'desc')->take(5)->get();
             $failedInvoices = Invoice::where('status', Invoice::STATUS_FAILED)->count();
             $pendingRetries = Invoice::where('status', Invoice::STATUS_FAILED)
-                ->where('retry_count', '<', 3)
+                ->where('retry_count', '<', 12)
                 ->count();
 
             return response()->json([

@@ -97,10 +97,10 @@ class AppServiceProvider extends ServiceProvider
         // Payment rate limiter - muy restrictivo
         RateLimiter::for('payment', function (Request $request) {
             return [
-                // 3 intentos por minuto por IP
-                Limit::perMinute(3)->by($request->ip()),
-                // 5 intentos por minuto por usuario
-                Limit::perMinute(5)->by($request->user()?->id ?: $request->ip()),
+                // 5 intentos por minuto por IP
+                Limit::perMinute(5)->by($request->ip()),
+                // 10 intentos por minuto por usuario
+                Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()),
                 // 20 por hora máximo
                 Limit::perHour(20)->by($request->user()?->id ?: $request->ip()),
             ];

@@ -850,6 +850,9 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         // Detalles completos de una factura
         Route::get('/{id}', [AdminInvoiceController::class, 'show']);
         
+        // Actualizar datos de una factura
+        Route::put('/{id}', [AdminInvoiceController::class, 'update']);
+        
         // Reintenta una factura fallida
         Route::post('/{id}/retry', [AdminInvoiceController::class, 'retry']);
         

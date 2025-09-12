@@ -163,7 +163,7 @@ class Invoice extends Model
      */
     public function canRetry(): bool
     {
-        return $this->retry_count < 9 && 
+        return $this->retry_count < 12 && 
                in_array($this->status, [self::STATUS_FAILED, self::STATUS_SENT_TO_SRI]);
     }
 
@@ -172,7 +172,7 @@ class Invoice extends Model
      */
     public function scopeRetryable($query)
     {
-        return $query->where('retry_count', '<', 9)
+        return $query->where('retry_count', '<', 12)
                      ->whereIn('status', [self::STATUS_FAILED, self::STATUS_SENT_TO_SRI]);
     }
 

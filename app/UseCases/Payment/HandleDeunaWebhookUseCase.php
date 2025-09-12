@@ -663,7 +663,7 @@ class HandleDeunaWebhookUseCase
             ]);
             
             event(new \App\Events\OrderCreated(
-                $orderId,
+                (int) $orderId, // ✅ CORREGIDO: Convertir a int como espera el evento
                 $userId,
                 $sellerId,
                 ['payment_method' => 'deuna', 'created_via' => 'webhook']

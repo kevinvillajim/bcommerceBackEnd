@@ -69,6 +69,16 @@ class ProcessCheckoutUseCase
      */
     public function execute(int $userId, array $paymentData, array $shippingData, array $items = [], ?int $sellerId = null, ?string $discountCode = null, ?array $calculatedTotals = null): array
     {
+        // 🔍 LOGGING TEMPORAL: Capturar datos de entrada
+        Log::info("🔍 ProcessCheckoutUseCase.execute() - DATOS DE ENTRADA", [
+            'userId' => $userId,
+            'shippingData_full' => $shippingData,
+            'shippingData_has_identification' => isset($shippingData['identification']),
+            'identification_value' => $shippingData['identification'] ?? 'NO_SET',
+            'shippingData_keys' => array_keys($shippingData),
+            'paymentData_keys' => array_keys($paymentData)
+        ]);
+
         return DB::transaction(function () use ($userId, $paymentData, $shippingData, $items, $sellerId, $discountCode, $calculatedTotals) {
             try {
                 // ✅ CRITICAL FIX: Skip isolation level change to avoid transaction conflicts
@@ -127,6 +137,8 @@ class ProcessCheckoutUseCase
                         $cartItems[] = [
                             'product_id' => $item->getProductId(),
                             'quantity' => $item->getQuantity(),
+                            'price' => $item->getPrice(),      // ✅ INCLUIR precio para verificación
+                            'subtotal' => $item->getSubtotal() // ✅ INCLUIR subtotal 
                         ];
                     }
                     $items = $cartItems;
@@ -203,7 +215,7 @@ class ProcessCheckoutUseCase
                         'user_id' => $userId
                     ]);
                 } else {
-                    if (!$this->priceVerificationService->verifyItemPrices($processedItems, $userId, $discountCode)) {
+                    if (!$this->priceVerificationService->verifyItemPrices($items, $userId, $discountCode)) {
                         throw new \Exception('Security: Price tampering detected. Transaction blocked.');
                     }
                 }
@@ -251,6 +263,14 @@ class ProcessCheckoutUseCase
                     ],
                 ];
 
+                // 🔍 LOGGING TEMPORAL: Verificar shipping_data en orderData
+                Log::info("🔍 ProcessCheckoutUseCase - SHIPPING_DATA EN ORDER_DATA", [
+                    'orderData_shipping_data' => $shippingData,
+                    'shipping_identification' => $shippingData['identification'] ?? 'NO_SET',
+                    'shipping_data_count' => count($shippingData),
+                    'is_array' => is_array($shippingData)
+                ]);
+
                 Log::info('🏗️ Creando orden principal con descuentos por volumen');
                 $mainOrder = $this->createOrderUseCase->execute($orderData);
                 $orderId = $mainOrder->getId();
@@ -259,27 +279,7 @@ class ProcessCheckoutUseCase
                     throw new \Exception('Error al crear la orden: ID de orden inválido');
                 }
 
-                // 🔥 NUEVO: Disparar evento OrderCreated para notificar al vendedor
-                Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated', [
-                    'order_id' => $orderId,
-                    'user_id' => $userId,
-                    'seller_id' => $sellerId,
-                    'total' => $totals['final_total'],
-                ]);
-
-                event(new OrderCreated(
-                    $orderId,
-                    $userId,
-                    $sellerId,
-                    [
-                        'order_number' => $mainOrder->getOrderNumber(),
-                        'total' => $totals['final_total'],
-                        'items' => $processedItems,
-                        'checkout_source' => 'ProcessCheckoutUseCase',
-                    ]
-                ));
-
-                Log::info('✅ Evento OrderCreated disparado desde ProcessCheckoutUseCase');
+                // 🔄 TIMING CORREGIDO: Evento OrderCreated se disparará DESPUÉS de actualizar payment_status
 
                 // 6. Marcar código de descuento como usado si se aplicó
                 if ($discountCodeInfo) {
@@ -334,6 +334,30 @@ class ProcessCheckoutUseCase
                     'payment_method' => $paymentData['method'],
                     'status' => 'processing',
                 ]);
+
+                // 🔥 TIMING CORREGIDO: Disparar evento OrderCreated DESPUÉS de actualizar payment_status
+                Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated CON payment_status', [
+                    'order_id' => $orderId,
+                    'user_id' => $userId,
+                    'seller_id' => $sellerId,
+                    'total' => $totals['final_total'],
+                    'payment_status' => 'completed',
+                ]);
+
+                event(new OrderCreated(
+                    $orderId,
+                    $userId,
+                    $sellerId,
+                    [
+                        'order_number' => $mainOrder->getOrderNumber(),
+                        'total' => $totals['final_total'],
+                        'items' => $processedItems,
+                        'checkout_source' => 'ProcessCheckoutUseCase',
+                        'payment_status' => 'completed', // ✅ Ahora el evento incluye payment_status
+                    ]
+                ));
+
+                Log::info('✅ Evento OrderCreated disparado DESPUÉS de updatePaymentInfo');
 
                 // 9. Crear seller orders
                 $itemsBySeller = $this->groupItemsBySeller($processedItems);
