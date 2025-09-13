@@ -174,12 +174,10 @@ class GenerateInvoiceFromOrderUseCase
             $address = 'Sin dirección especificada';
         }
 
-        // ✅ Construir nombre completo: priorizar datos del formulario, luego del usuario
-        $fullName = trim(
-            ($sourceData['first_name'] ?? '') . ' ' . ($sourceData['last_name'] ?? '')
-        );
+        // ✅ Construir nombre completo: usar el campo 'name' que envía el frontend
+        $fullName = $sourceData['name'] ?? '';
         
-        // ✅ Si no hay nombre en shipping_data, usar el nombre del usuario
+        // ✅ Si no hay nombre en shipping_data, usar el nombre del usuario como fallback
         if (empty($fullName)) {
             $fullName = $userData->name ?? '';
         }

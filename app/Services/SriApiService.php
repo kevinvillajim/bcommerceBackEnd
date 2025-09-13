@@ -106,9 +106,8 @@ class SriApiService
 
             // ✅ Verificar respuesta HTTP
             if (!$response->successful()) {
-                throw new Exception(
-                    "Error HTTP {$response->status()}: " . $response->body()
-                );
+                $errorMessage = $this->extractSriErrorMessage($response);
+                throw new Exception($errorMessage);
             }
 
             $responseData = $response->json();
@@ -407,5 +406,36 @@ class SriApiService
             : 0;
 
         return $stats;
+    }
+
+    /**
+     * Extrae el mensaje específico del error del SRI API
+     */
+    private function extractSriErrorMessage($response): string
+    {
+        try {
+            // Intentar parsear el JSON de la respuesta
+            $responseData = $response->json();
+            
+            // Si tiene el campo 'message', usarlo directamente
+            if (isset($responseData['message']) && !empty($responseData['message'])) {
+                return $responseData['message'];
+            }
+            
+            // Si tiene 'error', usarlo como fallback
+            if (isset($responseData['error']) && !empty($responseData['error'])) {
+                return $responseData['error'];
+            }
+            
+        } catch (Exception $e) {
+            // Si no se puede parsear el JSON, usar fallback
+            Log::warning('No se pudo parsear respuesta JSON del SRI', [
+                'response_body' => $response->body(),
+                'parse_error' => $e->getMessage()
+            ]);
+        }
+        
+        // Fallback: usar el mensaje HTTP con el body completo
+        return "Error HTTP {$response->status()}: " . $response->body();
     }
 }
