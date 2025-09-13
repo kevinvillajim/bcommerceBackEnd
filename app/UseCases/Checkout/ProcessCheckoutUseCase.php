@@ -15,6 +15,7 @@ use App\Services\ConfigurationService;
 use App\Services\PriceVerificationService;
 use App\UseCases\Cart\ApplyCartDiscountCodeUseCase;
 use App\UseCases\Order\CreateOrderUseCase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -336,15 +337,34 @@ class ProcessCheckoutUseCase
                 ]);
 
                 // 🔥 TIMING CORREGIDO: Disparar evento OrderCreated DESPUÉS de actualizar payment_status
-                Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated CON payment_status', [
-                    'order_id' => $orderId,
-                    'user_id' => $userId,
-                    'seller_id' => $sellerId,
-                    'total' => $totals['final_total'],
-                    'payment_status' => 'completed',
-                ]);
+                // ✅ PROTECCIÓN ANTI-DUPLICADOS: Verificar si el evento ya se disparó para este transaction_id
+                $transactionId = $paymentData['transaction_id'] ?? $paymentData['payment_id'] ?? 'unknown';
+                $eventCacheKey = "order_created_event_{$transactionId}";
+                
+                if (Cache::get($eventCacheKey)) {
+                    Log::warning('🚫 EVENTO DUPLICADO DETECTADO Y BLOQUEADO', [
+                        'transaction_id' => $transactionId,
+                        'order_id' => $orderId,
+                        'cache_key' => $eventCacheKey,
+                        'reason' => 'ProcessCheckoutUseCase transaction retry'
+                    ]);
+                    
+                    // No disparar el evento duplicado, pero continuar con el resto del proceso
+                } else {
+                    // Marcar que el evento ya se disparó para este transaction_id
+                    Cache::put($eventCacheKey, true, 300); // 5 minutos de caché
+                    
+                    Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated CON payment_status', [
+                        'order_id' => $orderId,
+                        'user_id' => $userId,
+                        'seller_id' => $sellerId,
+                        'total' => $totals['final_total'],
+                        'payment_status' => 'completed',
+                        'transaction_id' => $transactionId,
+                        'cache_key' => $eventCacheKey,
+                    ]);
 
-                event(new OrderCreated(
+                    event(new OrderCreated(
                     $orderId,
                     $userId,
                     $sellerId,
@@ -355,9 +375,13 @@ class ProcessCheckoutUseCase
                         'checkout_source' => 'ProcessCheckoutUseCase',
                         'payment_status' => 'completed', // ✅ Ahora el evento incluye payment_status
                     ]
-                ));
+                    ));
 
-                Log::info('✅ Evento OrderCreated disparado DESPUÉS de updatePaymentInfo');
+                    Log::info('✅ Evento OrderCreated disparado DESPUÉS de updatePaymentInfo', [
+                        'transaction_id' => $transactionId,
+                        'cache_key' => $eventCacheKey,
+                    ]);
+                }
 
                 // 9. Crear seller orders
                 $itemsBySeller = $this->groupItemsBySeller($processedItems);

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class Order extends Model
@@ -131,6 +132,15 @@ class Order extends Model
     public function sellerOrders(): HasMany
     {
         return $this->hasMany(SellerOrder::class);
+    }
+
+    /**
+     * Relación con la factura asociada a esta orden.
+     * Utilizada para verificar duplicados en GenerateInvoiceFromOrderListener.
+     */
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(Invoice::class);
     }
 
     /**

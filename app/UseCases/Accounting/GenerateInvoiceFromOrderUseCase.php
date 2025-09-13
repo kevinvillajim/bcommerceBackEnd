@@ -39,8 +39,27 @@ class GenerateInvoiceFromOrderUseCase
                 // ✅ Extraer datos del cliente desde shipping_data o billing_data
                 $customerData = $this->extractCustomerData($order);
 
-                // ✅ Generar número secuencial de factura
+                // ✅ Generar número secuencial de factura con validación de duplicados
                 $invoiceNumber = $this->generateInvoiceNumber();
+                
+                // ✅ VALIDACIÓN ADICIONAL: Verificar que el número no esté en uso
+                $maxRetries = 3;
+                for ($retry = 0; $retry < $maxRetries; $retry++) {
+                    if (!Invoice::where('invoice_number', $invoiceNumber)->exists()) {
+                        break; // Número válido, continuar
+                    }
+                    
+                    Log::warning('Número de factura duplicado detectado, regenerando', [
+                        'invoice_number' => $invoiceNumber,
+                        'retry' => $retry + 1
+                    ]);
+                    
+                    $invoiceNumber = $this->generateInvoiceNumber();
+                    
+                    if ($retry === $maxRetries - 1) {
+                        throw new Exception("No se pudo generar un número de factura único después de {$maxRetries} intentos");
+                    }
+                }
 
                 // ✅ Crear la factura
                 $invoice = Invoice::create([
@@ -155,12 +174,15 @@ class GenerateInvoiceFromOrderUseCase
             $address = 'Sin dirección especificada';
         }
 
-        // ✅ Construir nombre completo
-        $fullName = sprintf(
-            "%s %s",
-            $sourceData['first_name'] ?? '',
-            $sourceData['last_name'] ?? ''
+        // ✅ Construir nombre completo: priorizar datos del formulario, luego del usuario
+        $fullName = trim(
+            ($sourceData['first_name'] ?? '') . ' ' . ($sourceData['last_name'] ?? '')
         );
+        
+        // ✅ Si no hay nombre en shipping_data, usar el nombre del usuario
+        if (empty($fullName)) {
+            $fullName = $userData->name ?? '';
+        }
 
         // ✅ Email prioritario: del formulario, luego del usuario
         $email = $sourceData['email'] ?? $userData->email ?? '';
@@ -200,8 +222,9 @@ class GenerateInvoiceFromOrderUseCase
      */
     private function generateInvoiceNumber(): string
     {
-        // ✅ Obtener el último número de factura
-        $lastInvoice = Invoice::orderBy('invoice_number', 'desc')->first();
+        // ✅ CORRECCIÓN: Ordenamiento numérico en lugar de lexicográfico
+        // Usar CAST para ordenar por valor numérico, no alfabéticamente
+        $lastInvoice = Invoice::orderByRaw('CAST(invoice_number AS UNSIGNED) DESC')->first();
         
         if (!$lastInvoice) {
             return "000000001"; // Primera factura

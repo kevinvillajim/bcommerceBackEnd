@@ -54,13 +54,23 @@ class GenerateInvoiceFromOrderListener
             }
 
             // ✅ Verificar que no exista ya una factura para esta orden
-            if ($order->invoice) {
-                Log::warning('Orden ya tiene factura asociada, saltando generación', [
+            $existingInvoice = $order->invoice;
+            if ($existingInvoice) {
+                Log::warning('✅ PROTECCIÓN ANTI-DUPLICADOS: Orden ya tiene factura, saltando generación', [
                     'order_id' => $order->id,
-                    'existing_invoice_id' => $order->invoice->id
+                    'existing_invoice_id' => $existingInvoice->id,
+                    'existing_invoice_number' => $existingInvoice->invoice_number,
+                    'existing_invoice_status' => $existingInvoice->status,
+                    'protection_method' => 'order->invoice relationship'
                 ]);
                 return;
             }
+
+            Log::info('🔍 VERIFICACIÓN: No hay factura existente para esta orden, procederemos a generar', [
+                'order_id' => $order->id,
+                'order_payment_status' => $order->payment_status,
+                'invoice_relationship_loaded' => $order->relationLoaded('invoice')
+            ]);
 
             // ✅ Generar la factura
             $invoice = $this->generateInvoiceUseCase->execute($order);
