@@ -156,14 +156,14 @@ class RegisteredUserController extends Controller
             // Handle email verification - ALWAYS REQUIRE VERIFICATION
             $requiresVerification = true;
             $emailVerificationResult = null;
-            
+
             Log::info('Email verification is always required for new registrations');
             $emailVerificationResult = $this->emailVerificationService->sendVerificationEmail($user);
 
             if ($emailVerificationResult['status'] === 'error') {
                 Log::warning('Failed to send verification email', $emailVerificationResult);
             }
-            
+
             // NOTE: User email is NOT marked as verified here - they must click the verification link
 
             // Get JWT token

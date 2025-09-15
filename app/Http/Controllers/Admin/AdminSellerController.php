@@ -221,7 +221,7 @@ class AdminSellerController extends Controller
                 'status_reason' => $request->reason,
                 'status_updated_at' => now(),
             ]);
-            
+
             // NOTA: El estado del seller (tienda) es independiente del bloqueo del usuario
             // - seller->status: Controla el acceso a funciones de venta y visibilidad de productos
             // - user->is_blocked: Controla el acceso completo del usuario a la plataforma

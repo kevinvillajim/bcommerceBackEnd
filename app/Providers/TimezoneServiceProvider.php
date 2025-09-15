@@ -15,7 +15,7 @@ class TimezoneServiceProvider extends ServiceProvider
     {
         // Registrar EcuadorTimeService como singleton
         $this->app->singleton(EcuadorTimeService::class, function ($app) {
-            return new EcuadorTimeService();
+            return new EcuadorTimeService;
         });
     }
 
@@ -26,10 +26,10 @@ class TimezoneServiceProvider extends ServiceProvider
     {
         // Configurar Carbon para usar timezone de Ecuador por defecto
         Carbon::setLocale(config('app.locale', 'es'));
-        
+
         // Establecer timezone por defecto para toda la aplicación
         date_default_timezone_set(config('app.timezone', 'America/Guayaquil'));
-        
+
         // Configurar Carbon con timezone de Ecuador
         Carbon::setTestNow(null); // Resetear cualquier tiempo de prueba
     }

@@ -379,6 +379,7 @@ class EloquentDeunaPaymentRepository implements DeunaPaymentRepositoryInterface
                     'payment_id' => $paymentId,
                     'status' => $status,
                 ]);
+
                 return false;
             }
 

@@ -79,7 +79,7 @@ class TaxConfigurationController extends Controller
             $this->configService->setConfig('tax.name', $taxName);
             $this->configService->setConfig('tax.enabled', $enabled);
             $this->configService->setConfig('tax.updated_at', now()->toISOString());
-            
+
             // Actualizar versión para invalidar cache del frontend
             $this->configService->setConfig('tax.version', time());
 
@@ -128,7 +128,7 @@ class TaxConfigurationController extends Controller
             $taxName = $this->configService->getConfig('tax.name', 'IVA');
             $enabled = $this->configService->getConfig('tax.enabled', true);
 
-            if (!$enabled) {
+            if (! $enabled) {
                 return response()->json([
                     'status' => 'success',
                     'data' => [

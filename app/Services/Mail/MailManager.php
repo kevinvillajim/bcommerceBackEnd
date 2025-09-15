@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Mail;
 
 /**
  * Improved Mail Manager with individual templates and Mailable classes
- * 
+ *
  * Features:
  * - Blade templates for easy customization
  * - Individual Mailable classes for each email type
@@ -40,13 +40,13 @@ class MailManager
     {
         try {
             Mail::to($user->email)->send(new EmailVerificationMail($user, $token));
-            
+
             Log::info('Verification email sent successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'template' => 'emails.verification.verify-email'
+                'template' => 'emails.verification.verify-email',
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to send verification email', [
@@ -55,7 +55,7 @@ class MailManager
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return false;
         }
     }
@@ -67,13 +67,13 @@ class MailManager
     {
         try {
             Mail::to($user->email)->send(new PasswordResetMail($user, $token));
-            
+
             Log::info('Password reset email sent successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'template' => 'emails.password.reset'
+                'template' => 'emails.password.reset',
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to send password reset email', [
@@ -81,7 +81,7 @@ class MailManager
                 'email' => $user->email,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return false;
         }
     }
@@ -93,13 +93,13 @@ class MailManager
     {
         try {
             Mail::to($user->email)->send(new WelcomeMail($user));
-            
+
             Log::info('Welcome email sent successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'template' => 'emails.welcome.new-user'
+                'template' => 'emails.welcome.new-user',
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to send welcome email', [
@@ -107,7 +107,7 @@ class MailManager
                 'email' => $user->email,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return false;
         }
     }
@@ -116,23 +116,23 @@ class MailManager
      * Send general notification email
      */
     public function sendNotificationEmail(
-        User $user, 
-        string $subject, 
-        string $message, 
+        User $user,
+        string $subject,
+        string $message,
         string $type = 'notification',
         array $additionalData = []
     ): bool {
         try {
             Mail::to($user->email)->send(new NotificationMail($user, $subject, $message, $type, $additionalData));
-            
+
             Log::info('Notification email sent successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'subject' => $subject,
                 'type' => $type,
-                'template' => 'emails.notification.general'
+                'template' => 'emails.notification.general',
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to send notification email', [
@@ -142,7 +142,7 @@ class MailManager
                 'type' => $type,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return false;
         }
     }
@@ -154,14 +154,14 @@ class MailManager
     {
         try {
             Mail::to($user->email)->send(new OrderConfirmationMail($user, $order));
-            
+
             Log::info('Order confirmation email sent successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'order_id' => $order->id,
-                'template' => 'emails.orders.confirmation'
+                'template' => 'emails.orders.confirmation',
             ]);
-            
+
             return true;
         } catch (\Exception $e) {
             Log::error('Failed to send order confirmation email', [
@@ -170,7 +170,7 @@ class MailManager
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             return false;
         }
     }
@@ -182,11 +182,12 @@ class MailManager
     {
         try {
             // Create a test mailable to validate configuration
-            $testMail = new class extends \Illuminate\Mail\Mailable {
+            $testMail = new class extends \Illuminate\Mail\Mailable
+            {
                 public function build()
                 {
                     return $this->view('emails.test')
-                                ->subject('Test Connection');
+                        ->subject('Test Connection');
                 }
             };
 
@@ -199,9 +200,9 @@ class MailManager
             // Test by sending to log
             $originalDriver = Config::get('mail.default');
             Config::set('mail.default', 'log');
-            
+
             Mail::to('test@example.com')->send($testMail);
-            
+
             // Restore original driver
             Config::set('mail.default', $originalDriver);
 
@@ -229,7 +230,7 @@ class MailManager
 
             return [
                 'status' => 'error',
-                'message' => 'Error de conexión SMTP: ' . $e->getMessage(),
+                'message' => 'Error de conexión SMTP: '.$e->getMessage(),
             ];
         }
     }

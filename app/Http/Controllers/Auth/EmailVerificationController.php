@@ -31,9 +31,10 @@ class EmailVerificationController extends Controller
     {
         try {
             $token = $request->query('token');
-            
-            if (!$token) {
+
+            if (! $token) {
                 $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
                 return redirect()->to("{$frontendUrl}/email-verification-pending")
                     ->with('error', 'Token de verificación requerido');
             }
@@ -45,18 +46,21 @@ class EmailVerificationController extends Controller
             switch ($result['status']) {
                 case 'success':
                     Log::info('Email verification successful via GET', ['token' => substr($token, 0, 10).'...']);
+
                     return redirect()->to("{$frontendUrl}/email-verification-success?status=success");
-                    
+
                 case 'already_verified':
                     Log::info('Email already verified via GET', ['token' => substr($token, 0, 10).'...']);
+
                     return redirect()->to("{$frontendUrl}/email-verification-success?status=already_verified");
-                    
+
                 case 'error':
                 default:
                     Log::warning('Email verification failed via GET', [
                         'token' => substr($token, 0, 10).'...',
-                        'message' => $result['message'] ?? 'Unknown error'
+                        'message' => $result['message'] ?? 'Unknown error',
                     ]);
+
                     return redirect()->to("{$frontendUrl}/email-verification-pending")
                         ->with('error', $result['message'] ?? 'Error al verificar el email');
             }
@@ -68,6 +72,7 @@ class EmailVerificationController extends Controller
             ]);
 
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
             return redirect()->to("{$frontendUrl}/email-verification-pending")
                 ->with('error', 'Error interno del servidor');
         }

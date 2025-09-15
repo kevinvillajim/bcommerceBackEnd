@@ -11,6 +11,7 @@ class InvoiceApproved
     use Dispatchable, SerializesModels;
 
     public Invoice $invoice;
+
     public array $sriResponse;
 
     /**

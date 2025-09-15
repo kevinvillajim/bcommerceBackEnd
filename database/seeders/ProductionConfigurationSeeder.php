@@ -10,11 +10,11 @@ class ProductionConfigurationSeeder extends Seeder
 {
     /**
      * Seed the application's database with production-ready configurations.
-     * 
+     *
      * Uso:
      * php artisan db:seed --class=ProductionConfigurationSeeder
-     * 
-     * Este seeder inserta TODAS las configuraciones críticas para que el sistema 
+     *
+     * Este seeder inserta TODAS las configuraciones críticas para que el sistema
      * funcione correctamente en producción.
      */
     public function run(): void
@@ -22,13 +22,15 @@ class ProductionConfigurationSeeder extends Seeder
         $this->command->info('🚀 Insertando configuraciones de producción...');
 
         // Verificar que las tablas existan
-        if (!Schema::hasTable('configurations')) {
+        if (! Schema::hasTable('configurations')) {
             $this->command->error('❌ La tabla configurations no existe. Ejecute php artisan migrate primero.');
+
             return;
         }
 
-        if (!Schema::hasTable('platform_configurations')) {
+        if (! Schema::hasTable('platform_configurations')) {
             $this->command->error('❌ La tabla platform_configurations no existe. Ejecute php artisan migrate primero.');
+
             return;
         }
 
@@ -275,7 +277,7 @@ class ProductionConfigurationSeeder extends Seeder
 
         foreach ($platformConfigs as $config) {
             $exists = DB::table('platform_configurations')->where('key', $config['key'])->exists();
-            if (!$exists) {
+            if (! $exists) {
                 $config['created_at'] = now();
                 $config['updated_at'] = now();
                 DB::table('platform_configurations')->insert($config);
@@ -371,8 +373,8 @@ class ProductionConfigurationSeeder extends Seeder
     {
         foreach ($configurations as $config) {
             $exists = DB::table('configurations')->where('key', $config['key'])->exists();
-            
-            if (!$exists) {
+
+            if (! $exists) {
                 $config['created_at'] = now();
                 $config['updated_at'] = now();
                 DB::table('configurations')->insert($config);

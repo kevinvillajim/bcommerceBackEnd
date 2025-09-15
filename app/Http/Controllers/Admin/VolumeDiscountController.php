@@ -83,7 +83,7 @@ class VolumeDiscountController extends Controller
             $this->configService->setConfig('volume_discounts.stackable', $request->input('stackable'));
             $this->configService->setConfig('volume_discounts.show_savings_message', $request->input('show_savings_message'));
             $this->configService->setConfig('volume_discounts.default_tiers', $request->input('default_tiers'));
-            
+
             // ✅ NUEVO: Actualizar versión para invalidar cache del frontend
             $this->configService->setConfig('volume_discounts.version', time());
 

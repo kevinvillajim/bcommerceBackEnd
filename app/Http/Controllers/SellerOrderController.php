@@ -10,9 +10,9 @@ use App\Events\ShippingStatusUpdated;
 use App\Models\Seller;
 use App\Models\Shipping;
 use App\Models\User;
+use App\Services\ConfigurationService;
 use App\UseCases\Order\GetSellerOrderDetailUseCase;
 use App\UseCases\Shipping\CreateShippingUseCase;
-use App\Services\ConfigurationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -110,7 +110,7 @@ class SellerOrderController extends Controller
             if ($orderItems && $orderItems->count() > 0) {
                 foreach ($orderItems as $item) {
                     // ✅ DEBUGGING: Log de datos del item
-                    Log::info("SellerOrder Item Debug", [
+                    Log::info('SellerOrder Item Debug', [
                         'item_id' => $item->id,
                         'product_id' => $item->product_id,
                         'product_name' => $item->product_name,
@@ -118,29 +118,29 @@ class SellerOrderController extends Controller
                         'price' => $item->price,
                         'original_price' => $item->original_price,
                         'subtotal' => $item->subtotal,
-                        'seller_id' => $item->seller_id
+                        'seller_id' => $item->seller_id,
                     ]);
-                    
+
                     // ✅ OBTENER DATOS REALES DEL PRODUCTO
                     $product = \App\Models\Product::find($item->product_id);
                     $productName = $product ? $product->name : ($item->product_name ?: 'Producto no disponible');
                     $productSku = $product ? $product->sku : ($item->product_sku ?: null);
-                    
+
                     // ✅ VERIFICAR SI LOS DATOS ESTÁN VACÍOS Y USAR FALLBACKS
                     $quantity = $item->quantity ?: 1; // Si quantity es 0, usar 1 por defecto
                     $price = $item->price ?: 0;
                     $originalPrice = $item->original_price ?: $price;
-                    
+
                     // Si el precio es 0, intentar obtener el precio del producto
                     if ($price <= 0 && $product) {
                         $originalPrice = $product->price ?: 0;
                         $price = $originalPrice; // Sin descuentos por ahora si no tenemos datos
                         Log::warning("Usando precio del producto para item {$item->id}", [
                             'product_price' => $product->price,
-                            'item_price' => $item->price
+                            'item_price' => $item->price,
                         ]);
                     }
-                    
+
                     // ✅ USAR DATOS REALES DE LA BASE DE DATOS SIN INVENTAR
                     $detailedItems[] = [
                         'id' => $item->id,
@@ -175,22 +175,22 @@ class SellerOrderController extends Controller
                     $product = \App\Models\Product::find($item->product_id);
                     $productName = $product ? $product->name : ($item->product_name ?: 'Producto no disponible');
                     $productSku = $product ? $product->sku : ($item->product_sku ?: null);
-                    
+
                     // ✅ VERIFICAR SI LOS DATOS ESTÁN VACÍOS Y USAR FALLBACKS (MISMO FIX)
                     $quantity = $item->quantity ?: 1; // Si quantity es 0, usar 1 por defecto
                     $price = $item->price ?: 0;
                     $originalPrice = $item->original_price ?: $price;
-                    
+
                     // Si el precio es 0, intentar obtener el precio del producto
                     if ($price <= 0 && $product) {
                         $originalPrice = $product->price ?: 0;
                         $price = $originalPrice; // Sin descuentos por ahora si no tenemos datos
                         Log::warning("Usando precio del producto para SellerOrder item {$item->id}", [
                             'product_price' => $product->price,
-                            'item_price' => $item->price
+                            'item_price' => $item->price,
                         ]);
                     }
-                    
+
                     $detailedItems[] = [
                         'id' => $item->id,
                         'product_id' => $item->product_id,
@@ -254,7 +254,7 @@ class SellerOrderController extends Controller
 
             // ✅ NUEVO: Calcular distribución de envío para esta orden
             $shippingDistribution = $this->calculateShippingDistribution($sellerOrder->getOrderId());
-            
+
             // ✅ CORREGIDO: Calcular resumen CORRECTO basado en datos reales de la DB
             $totalQuantity = 0;
             $totalOriginalAmount = 0;
@@ -265,16 +265,16 @@ class SellerOrderController extends Controller
             foreach ($detailedItems as $item) {
                 $qty = $item['quantity'];
                 $totalProductPrice = $item['total_price']; // Total del producto (ya calculado)
-                
+
                 $totalQuantity += $qty;
                 $totalOriginalAmount += ($item['original_unit_price'] * $qty);
                 $totalFinalAmount += $totalProductPrice;
-                
+
                 // Comisión sobre el precio total final del producto
                 $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
                 $itemCommission = $totalProductPrice * ($commissionRate / 100);
                 $totalCommission += $itemCommission;
-                
+
                 // Ganancia del seller = precio total del producto - comisión
                 $totalSellerEarnings += ($totalProductPrice - $itemCommission);
             }
@@ -1210,29 +1210,29 @@ class SellerOrderController extends Controller
         try {
             // Obtener la orden principal para saber el costo de envío
             $order = $this->orderRepository->findById($orderId);
-            if (!$order) {
+            if (! $order) {
                 return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
             }
 
             // Obtener el costo de envío de la orden (asumiendo que está en el modelo)
             $shippingCost = $order->getShippingCost() ?? 0;
-            
+
             if ($shippingCost <= 0) {
                 return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
             }
 
             // Contar cuántos sellers únicos hay en esta orden
             $sellerCount = \App\Models\SellerOrder::where('order_id', $orderId)->distinct('seller_id')->count();
-            
+
             $enabled = $this->configService->getConfig('shipping_distribution.enabled', true);
-            
-            if (!$enabled) {
+
+            if (! $enabled) {
                 return [
                     'seller_amount' => 0,
                     'platform_amount' => $shippingCost,
                     'total_cost' => $shippingCost,
                     'seller_count' => $sellerCount,
-                    'enabled' => false
+                    'enabled' => false,
                 ];
             }
 
@@ -1241,14 +1241,14 @@ class SellerOrderController extends Controller
                 $percentage = $this->configService->getConfig('shipping_distribution.single_seller_max', 80.0);
                 $sellerAmount = ($shippingCost * $percentage) / 100;
                 $platformAmount = $shippingCost - $sellerAmount;
-                
+
                 return [
                     'seller_amount' => round($sellerAmount, 2),
                     'platform_amount' => round($platformAmount, 2),
                     'total_cost' => $shippingCost,
                     'seller_count' => $sellerCount,
                     'percentage' => $percentage,
-                    'enabled' => true
+                    'enabled' => true,
                 ];
             } else {
                 // Múltiples sellers: cada uno recibe el porcentaje configurado
@@ -1256,7 +1256,7 @@ class SellerOrderController extends Controller
                 $amountPerSeller = ($shippingCost * $percentageEach) / 100;
                 $totalDistributed = $amountPerSeller * $sellerCount;
                 $platformAmount = $shippingCost - $totalDistributed;
-                
+
                 return [
                     'seller_amount' => round($amountPerSeller, 2), // Lo que recibe ESTE seller
                     'platform_amount' => round($platformAmount, 2),
@@ -1264,11 +1264,12 @@ class SellerOrderController extends Controller
                     'seller_count' => $sellerCount,
                     'percentage' => $percentageEach,
                     'total_distributed_to_all_sellers' => round($totalDistributed, 2),
-                    'enabled' => true
+                    'enabled' => true,
                 ];
             }
         } catch (\Exception $e) {
-            Log::error("Error calculating shipping distribution for order {$orderId}: " . $e->getMessage());
+            Log::error("Error calculating shipping distribution for order {$orderId}: ".$e->getMessage());
+
             return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
         }
     }

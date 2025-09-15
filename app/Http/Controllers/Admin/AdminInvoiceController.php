@@ -4,21 +4,25 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
-use App\Models\Order;
 use App\Services\SriApiService;
-use Illuminate\Http\Request;
+use App\UseCases\Accounting\GenerateInvoicePdfUseCase;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class AdminInvoiceController extends Controller
 {
     private SriApiService $sriApiService;
+    private GenerateInvoicePdfUseCase $generateInvoicePdfUseCase;
 
-    public function __construct(SriApiService $sriApiService)
+    public function __construct(SriApiService $sriApiService, GenerateInvoicePdfUseCase $generateInvoicePdfUseCase)
     {
         $this->middleware('jwt.auth');
         $this->middleware('admin'); // Solo admins pueden acceder
         $this->sriApiService = $sriApiService;
+        $this->generateInvoicePdfUseCase = $generateInvoicePdfUseCase;
     }
 
     /**
@@ -36,11 +40,11 @@ class AdminInvoiceController extends Controller
             }
 
             if ($request->filled('customer_identification')) {
-                $query->where('customer_identification', 'like', '%' . $request->customer_identification . '%');
+                $query->where('customer_identification', 'like', '%'.$request->customer_identification.'%');
             }
 
             if ($request->filled('customer_name')) {
-                $query->where('customer_name', 'like', '%' . $request->customer_name . '%');
+                $query->where('customer_name', 'like', '%'.$request->customer_name.'%');
             }
 
             if ($request->filled('start_date')) {
@@ -52,7 +56,7 @@ class AdminInvoiceController extends Controller
             }
 
             if ($request->filled('invoice_number')) {
-                $query->where('invoice_number', 'like', '%' . $request->invoice_number . '%');
+                $query->where('invoice_number', 'like', '%'.$request->invoice_number.'%');
             }
 
             // Paginación
@@ -68,7 +72,7 @@ class AdminInvoiceController extends Controller
                     'status' => $invoice->status,
                     'status_label' => $this->getStatusLabel($invoice->status),
                     'status_color' => $this->getStatusColor($invoice->status),
-                    
+
                     // Datos del cliente
                     'customer' => [
                         'identification' => $invoice->customer_identification,
@@ -89,7 +93,7 @@ class AdminInvoiceController extends Controller
                     'sri_access_key' => $invoice->sri_access_key,
                     'sri_authorization_number' => $invoice->sri_authorization_number,
                     'sri_error_message' => $invoice->sri_error_message,
-                    
+
                     // Reintentos
                     'retry_count' => $invoice->retry_count,
                     'last_retry_at' => $invoice->last_retry_at?->format('Y-m-d H:i:s'),
@@ -120,19 +124,19 @@ class AdminInvoiceController extends Controller
                     'total' => $invoices->total(),
                     'from' => $invoices->firstItem(),
                     'to' => $invoices->lastItem(),
-                ]
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error listando facturas admin', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cargar las facturas',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -145,10 +149,10 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::with(['order.user', 'items.product'])->find($id);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Factura no encontrada'
+                    'message' => 'Factura no encontrada',
                 ], 404);
             }
 
@@ -159,7 +163,7 @@ class AdminInvoiceController extends Controller
                 'status' => $invoice->status,
                 'status_label' => $this->getStatusLabel($invoice->status),
                 'status_color' => $this->getStatusColor($invoice->status),
-                
+
                 // Datos completos del cliente
                 'customer' => [
                     'identification' => $invoice->customer_identification,
@@ -184,7 +188,7 @@ class AdminInvoiceController extends Controller
                     'error_message' => $invoice->sri_error_message,
                     'response' => $invoice->sri_response ? json_decode($invoice->sri_response, true) : null,
                 ],
-                
+
                 // Sistema de reintentos
                 'retry_info' => [
                     'count' => $invoice->retry_count,
@@ -234,19 +238,19 @@ class AdminInvoiceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $data
+                'data' => $data,
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error obteniendo detalles de factura', [
                 'invoice_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cargar los detalles de la factura',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -259,17 +263,17 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::find($id);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Factura no encontrada'
+                    'message' => 'Factura no encontrada',
                 ], 404);
             }
 
-            if (!$invoice->canRetry()) {
+            if (! $invoice->canRetry()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Esta factura no puede reintentarse (máximo de reintentos alcanzado o estado incorrecto)'
+                    'message' => 'Esta factura no puede reintentarse (máximo de reintentos alcanzado o estado incorrecto)',
                 ], 400);
             }
 
@@ -282,20 +286,20 @@ class AdminInvoiceController extends Controller
                 'data' => [
                     'invoice_id' => $invoice->id,
                     'retry_count' => $invoice->retry_count,
-                    'sri_response' => $result
-                ]
+                    'sri_response' => $result,
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error reintentando factura', [
                 'invoice_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al reintentar la factura',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -308,17 +312,17 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::find($id);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Factura no encontrada'
+                    'message' => 'Factura no encontrada',
                 ], 404);
             }
 
-            if (!$invoice->sri_access_key) {
+            if (! $invoice->sri_access_key) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Esta factura no tiene clave de acceso del SRI'
+                    'message' => 'Esta factura no tiene clave de acceso del SRI',
                 ], 400);
             }
 
@@ -330,20 +334,20 @@ class AdminInvoiceController extends Controller
                 'data' => [
                     'invoice_id' => $invoice->id,
                     'current_status' => $invoice->status,
-                    'sri_status' => $sriStatus
-                ]
+                    'sri_status' => $sriStatus,
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error consultando estado SRI', [
                 'invoice_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al consultar el estado en el SRI',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -356,10 +360,10 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::find($id);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Factura no encontrada'
+                    'message' => 'Factura no encontrada',
                 ], 404);
             }
 
@@ -367,7 +371,7 @@ class AdminInvoiceController extends Controller
             if (in_array($invoice->status, [Invoice::STATUS_AUTHORIZED])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se puede editar una factura autorizada por el SRI'
+                    'message' => 'No se puede editar una factura autorizada por el SRI',
                 ], 400);
             }
 
@@ -384,7 +388,7 @@ class AdminInvoiceController extends Controller
             if (isset($validatedData['customer_identification'])) {
                 $identification = $validatedData['customer_identification'];
                 $length = strlen($identification);
-                
+
                 if ($length === 10) {
                     $validatedData['customer_identification_type'] = '05'; // Cédula
                 } elseif ($length === 13 && substr($identification, -3) === '001') {
@@ -392,7 +396,7 @@ class AdminInvoiceController extends Controller
                 } else {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Identificación inválida. Debe ser cédula (10 dígitos) o RUC (13 dígitos terminado en 001)'
+                        'message' => 'Identificación inválida. Debe ser cédula (10 dígitos) o RUC (13 dígitos terminado en 001)',
                     ], 400);
                 }
             }
@@ -416,7 +420,7 @@ class AdminInvoiceController extends Controller
                 'admin_user' => auth()->user()->name ?? 'Admin',
                 'old_data' => $oldData,
                 'new_data' => array_intersect_key($invoice->toArray(), $validatedData),
-                'changed_fields' => array_keys($validatedData)
+                'changed_fields' => array_keys($validatedData),
             ]);
 
             return response()->json([
@@ -424,28 +428,28 @@ class AdminInvoiceController extends Controller
                 'message' => 'Factura actualizada correctamente',
                 'data' => [
                     'invoice_id' => $invoice->id,
-                    'updated_fields' => array_keys($validatedData)
-                ]
+                    'updated_fields' => array_keys($validatedData),
+                ],
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Datos inválidos',
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ], 422);
 
         } catch (\Exception $e) {
             Log::error('Error actualizando factura', [
                 'invoice_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al actualizar la factura',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -482,19 +486,19 @@ class AdminInvoiceController extends Controller
                                 'created_at' => $invoice->created_at->format('Y-m-d H:i:s'),
                             ];
                         }),
-                    ]
-                ]
+                    ],
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error obteniendo estadísticas de facturas', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cargar las estadísticas',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -504,7 +508,7 @@ class AdminInvoiceController extends Controller
      */
     private function getStatusLabel(string $status): string
     {
-        return match($status) {
+        return match ($status) {
             Invoice::STATUS_DRAFT => 'Borrador',
             Invoice::STATUS_SENT_TO_SRI => 'Enviado al SRI',
             Invoice::STATUS_PENDING => 'Pendiente',
@@ -522,11 +526,95 @@ class AdminInvoiceController extends Controller
     }
 
     /**
+     * Descargar PDF de una factura
+     */
+    public function downloadPdf(Request $request, $id): Response
+    {
+        try {
+            $invoice = Invoice::with(['order.items.product', 'order.user'])->find($id);
+
+            if (!$invoice) {
+                return response('Factura no encontrada', 404);
+            }
+
+            // Si ya existe un PDF generado, devolverlo
+            if ($invoice->pdf_path && Storage::disk('public')->exists($invoice->pdf_path)) {
+                $pdfContent = Storage::disk('public')->get($invoice->pdf_path);
+                $fileName = "factura_{$invoice->invoice_number}.pdf";
+
+                return response($pdfContent, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+                    'Content-Length' => strlen($pdfContent),
+                ]);
+            }
+
+            // Si no existe PDF o la factura no está autorizada, generar uno nuevo
+            if ($invoice->status !== Invoice::STATUS_AUTHORIZED) {
+                // Para facturas no autorizadas, generar PDF temporal sin datos SRI
+                Log::info('Generando PDF temporal para factura no autorizada', [
+                    'invoice_id' => $invoice->id,
+                    'status' => $invoice->status,
+                ]);
+
+                $pdfPath = $this->generateTemporaryPdf($invoice);
+            } else {
+                // Para facturas autorizadas, usar el UseCase completo
+                $pdfPath = $this->generateInvoicePdfUseCase->execute($invoice);
+            }
+
+            $pdfContent = Storage::disk('public')->get($pdfPath);
+            $fileName = "factura_{$invoice->invoice_number}.pdf";
+
+            return response($pdfContent, 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+                'Content-Length' => strlen($pdfContent),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error descargando PDF de factura', [
+                'invoice_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response('Error al generar el PDF: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Genera un PDF temporal para facturas no autorizadas
+     */
+    private function generateTemporaryPdf(Invoice $invoice): string
+    {
+        $pdfData = [
+            'invoice' => $invoice,
+            'order' => $invoice->order,
+            'customer' => $invoice->order->user,
+            'items' => $invoice->order->items,
+            'sriResponse' => [],
+            'generatedAt' => now(),
+        ];
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('invoices.pdf-template', $pdfData);
+        $pdf->setPaper('A4', 'portrait');
+
+        $fileName = "temp_invoice_{$invoice->invoice_number}_{$invoice->id}.pdf";
+        $filePath = "invoices/temp/{$fileName}";
+
+        $pdfContent = $pdf->output();
+        Storage::disk('public')->put($filePath, $pdfContent);
+
+        return $filePath;
+    }
+
+    /**
      * Obtiene los colores de estado para el frontend
      */
     private function getStatusColor(string $status): string
     {
-        return match($status) {
+        return match ($status) {
             Invoice::STATUS_DRAFT => 'gray',
             Invoice::STATUS_SENT_TO_SRI => 'blue',
             Invoice::STATUS_PENDING => 'yellow',

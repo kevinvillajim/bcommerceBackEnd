@@ -73,7 +73,6 @@ interface DeunaPaymentRepositoryInterface
     /**
      * Find expired pending payments older than the specified threshold
      *
-     * @param \Carbon\Carbon $threshold
      * @return Collection<DeunaPaymentEntity>
      */
     public function findExpiredPendingPayments(\Carbon\Carbon $threshold): Collection;

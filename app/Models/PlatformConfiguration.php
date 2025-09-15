@@ -31,7 +31,7 @@ class PlatformConfiguration extends Model
             ->where('is_active', true)
             ->first();
 
-        if (!$config) {
+        if (! $config) {
             return $default;
         }
 
@@ -41,7 +41,7 @@ class PlatformConfiguration extends Model
     /**
      * Establecer una configuración
      */
-    public static function setValue(string $key, $value, string $description = null, string $category = 'general')
+    public static function setValue(string $key, $value, ?string $description = null, string $category = 'general')
     {
         return static::updateOrCreate(
             ['key' => $key],

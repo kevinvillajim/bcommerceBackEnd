@@ -24,6 +24,7 @@ use App\Http\Controllers\CartPricingController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\ConfigurationVersionController;
 use App\Http\Controllers\DatafastController;
 use App\Http\Controllers\DeunaPaymentController;
 use App\Http\Controllers\DeunaWebhookController;
@@ -34,7 +35,6 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemBreakdownController;
-use App\Http\Controllers\ConfigurationVersionController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PricingController;
 use App\Http\Controllers\ProductController;
@@ -349,7 +349,7 @@ Route::middleware('jwt.auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::post('/checkout', [CheckoutController::class, 'process'])->middleware('throttle:checkout');
-    
+
     // 🧮 Pricing Calculator Routes - Centralized calculations
     Route::post('/calculate-totals', [PricingController::class, 'calculateTotals']);
     Route::post('/validate-totals', [PricingController::class, 'validateTotals']);
@@ -846,19 +846,21 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
     Route::prefix('invoices')->group(function () {
         // Lista paginada de facturas con filtros
         Route::get('/', [AdminInvoiceController::class, 'index']);
-        
+
         // Detalles completos de una factura
         Route::get('/{id}', [AdminInvoiceController::class, 'show']);
-        
+
         // Actualizar datos de una factura
         Route::put('/{id}', [AdminInvoiceController::class, 'update']);
-        
+
         // Reintenta una factura fallida
         Route::post('/{id}/retry', [AdminInvoiceController::class, 'retry']);
-        
+
         // Consulta estado actual en SRI
         Route::get('/{id}/check-status', [AdminInvoiceController::class, 'checkStatus']);
-        
+
+        // Descargar PDF de una factura
+        Route::get('/{id}/download-pdf', [AdminInvoiceController::class, 'downloadPdf']);
         // Estadísticas de facturas para dashboard
         Route::get('/stats/overview', [AdminInvoiceController::class, 'stats']);
     });
@@ -873,7 +875,6 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::post('/admins', [AdminController::class, 'manageAdmin']);
         Route::delete('/admins/{userId}', [AdminController::class, 'removeAdmin']);
     });
-
 
     /*
     |--------------------------------------------------------------------------
@@ -1023,7 +1024,7 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::post('/mail', [App\Http\Controllers\Auth\EmailVerificationController::class, 'updateMailConfiguration']);
         Route::post('/mail/test', [App\Http\Controllers\Auth\EmailVerificationController::class, 'testMailConfiguration']);
         Route::post('/mail/send-custom', [App\Http\Controllers\Auth\EmailVerificationController::class, 'sendCustomEmail']);
-        
+
         // Mail testing and debugging routes (admin only)
         Route::post('/mail/debug-test', [App\Http\Controllers\Admin\MailTestController::class, 'testMail']);
         Route::get('/mail/status', [App\Http\Controllers\Admin\MailTestController::class, 'getStatus']);

@@ -103,38 +103,38 @@ class DeunaPaymentController extends Controller
 
                 // 🔧 CRITICAL VALIDATION: Check for missing product_id in any item
                 foreach ($paymentData['items'] as $index => $item) {
-                    if (!isset($item['product_id']) || $item['product_id'] === null) {
+                    if (! isset($item['product_id']) || $item['product_id'] === null) {
                         Log::error('❌ CRITICAL: Missing product_id in item received from frontend', [
                             'item_index' => $index,
                             'item_keys' => array_keys($item),
                             'item_data' => $item,
                             'all_items' => $paymentData['items'],
                         ]);
-                        
+
                         return response()->json([
                             'success' => false,
                             'message' => 'Validation failed: Missing product_id in cart items',
                             'errors' => [
-                                'items' => ["Item at index {$index} is missing product_id field"]
+                                'items' => ["Item at index {$index} is missing product_id field"],
                             ],
                             'debug' => [
                                 'item_index' => $index,
                                 'item_name' => $item['name'] ?? 'Unknown',
                                 'available_fields' => array_keys($item),
-                            ]
+                            ],
                         ], 422);
                     }
                 }
-                
+
                 Log::info('✅ All items have valid product_id fields', [
                     'items_validated' => count($paymentData['items']),
-                    'product_ids' => array_map(fn($item) => $item['product_id'], $paymentData['items'])
+                    'product_ids' => array_map(fn ($item) => $item['product_id'], $paymentData['items']),
                 ]);
-                
+
                 // 🧮 NUEVO: Usar PricingCalculatorService para validar/recalcular monto
                 $user = $request->user();
                 $userId = $user->id;
-                
+
                 // Preparar items para el servicio de pricing
                 $pricingItems = [];
                 foreach ($paymentData['items'] as $item) {
@@ -143,29 +143,29 @@ class DeunaPaymentController extends Controller
                         'quantity' => $item['quantity'],
                     ];
                 }
-                
+
                 // Extraer código de cupón del metadata si existe
                 $couponCode = $paymentData['metadata']['coupon_code'] ?? null;
-                
+
                 Log::info('🧮 Recalculando totales con PricingCalculatorService para Deuna', [
                     'user_id' => $userId,
                     'items_count' => count($pricingItems),
                     'coupon_code' => $couponCode,
                     'frontend_amount' => $paymentData['amount'],
                 ]);
-                
+
                 // Calcular totales usando servicio centralizado
                 $pricingResult = $this->pricingService->calculateCartTotals(
                     $pricingItems,
                     $userId,
                     $couponCode
                 );
-                
+
                 $backendCalculatedTotal = $pricingResult['final_total'];
                 $frontendAmount = (float) $paymentData['amount'];
                 $difference = abs($backendCalculatedTotal - $frontendAmount);
                 $tolerance = 0.01; // Tolerancia de $0.01 para diferencias de redondeo
-                
+
                 if ($difference > $tolerance) {
                     Log::error('❌ DISCREPANCIA DETECTADA: Frontend vs Backend total en Deuna', [
                         'frontend_amount' => $frontendAmount,
@@ -185,7 +185,7 @@ class DeunaPaymentController extends Controller
                         'user_id' => $userId,
                         'coupon_code' => $couponCode,
                     ]);
-                    
+
                     return response()->json([
                         'success' => false,
                         'message' => 'Discrepancia de pricing detectada',
@@ -206,10 +206,10 @@ class DeunaPaymentController extends Controller
                         ],
                     ], 422);
                 }
-                
+
                 // ✅ Usar el monto recalculado por el backend para garantizar consistencia
                 $paymentData['amount'] = $backendCalculatedTotal;
-                
+
                 Log::info('✅ Totales validados exitosamente para Deuna', [
                     'frontend_amount' => $frontendAmount,
                     'backend_calculated' => $backendCalculatedTotal,
@@ -218,7 +218,7 @@ class DeunaPaymentController extends Controller
                 ]);
             } else {
                 Log::info('🔍 NO ITEMS received in payment request');
-                
+
                 // Si no hay items, usar el monto del frontend (caso legacy)
                 Log::warning('⚠️ Usando monto del frontend sin validación (no hay items)', [
                     'amount' => $paymentData['amount'],

@@ -3,10 +3,10 @@
 namespace App\Listeners;
 
 use App\Events\InvoiceGenerated;
-use App\Services\SriApiService;
 use App\Jobs\RetryFailedSriInvoiceJob;
-use Illuminate\Support\Facades\Log;
+use App\Services\SriApiService;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class SendInvoiceToSriListener
 {
@@ -27,7 +27,7 @@ class SendInvoiceToSriListener
         Log::info('Procesando envío automático de factura al SRI', [
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'status' => $invoice->status
+            'status' => $invoice->status,
         ]);
 
         try {
@@ -35,8 +35,9 @@ class SendInvoiceToSriListener
             if ($invoice->status !== $invoice::STATUS_DRAFT) {
                 Log::warning('Factura no está en estado DRAFT, saltando envío al SRI', [
                     'invoice_id' => $invoice->id,
-                    'current_status' => $invoice->status
+                    'current_status' => $invoice->status,
                 ]);
+
                 return;
             }
 
@@ -48,34 +49,34 @@ class SendInvoiceToSriListener
 
             Log::info('Factura enviada exitosamente al SRI', [
                 'invoice_id' => $invoice->id,
-                'sri_response' => $response
+                'sri_response' => $response,
             ]);
 
         } catch (Exception $e) {
             Log::error('Error enviando factura al SRI automáticamente', [
                 'invoice_id' => $invoice->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             // ✅ El SriApiService ya maneja el marcado como fallida
-            
+
             // ✅ Refrescar la factura para obtener el estado actualizado
             $invoice->refresh();
-            
+
             // ✅ Programar reintento asincrónico si es posible
             if ($invoice->canRetry()) {
                 Log::info('Programando reintento asincrónico para factura fallida', [
                     'invoice_id' => $invoice->id,
-                    'retry_count' => $invoice->retry_count
+                    'retry_count' => $invoice->retry_count,
                 ]);
-                
+
                 RetryFailedSriInvoiceJob::dispatch($invoice);
             } else {
                 Log::warning('Factura no puede reintentarse, se mantendrá como fallida', [
                     'invoice_id' => $invoice->id,
                     'retry_count' => $invoice->retry_count ?? 0,
-                    'status' => $invoice->status
+                    'status' => $invoice->status,
                 ]);
             }
 

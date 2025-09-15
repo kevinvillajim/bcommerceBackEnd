@@ -2,13 +2,14 @@
 
 namespace App\Console\Commands;
 
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class CreateCorrectCoupon extends Command
 {
     protected $signature = 'debug:create-correct-coupon';
+
     protected $description = 'Create coupon with correct structure';
 
     public function handle()
@@ -30,13 +31,13 @@ class CreateCorrectCoupon extends Command
                     'is_used' => 0, // No usado aún
                     'expires_at' => Carbon::now()->addMonths(6),
                     'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'updated_at' => Carbon::now(),
                 ]);
-                
+
                 $this->info("   ✅ Cupón TEST5 creado con ID: {$couponId}");
             }
         } catch (\Exception $e) {
-            $this->error('   ❌ Error: ' . $e->getMessage());
+            $this->error('   ❌ Error: '.$e->getMessage());
         }
 
         // También crear algunos cupones adicionales para testing
@@ -50,33 +51,33 @@ class CreateCorrectCoupon extends Command
         foreach ($additionalCoupons as $code => $percentage) {
             try {
                 $exists = DB::table('discount_codes')->where('code', $code)->first();
-                if (!$exists) {
+                if (! $exists) {
                     DB::table('discount_codes')->insert([
                         'code' => $code,
                         'discount_percentage' => $percentage,
                         'is_used' => 0,
                         'expires_at' => Carbon::now()->addMonths(6),
                         'created_at' => Carbon::now(),
-                        'updated_at' => Carbon::now()
+                        'updated_at' => Carbon::now(),
                     ]);
                     $this->info("   ✅ Cupón {$code} ({$percentage}%) creado");
                 } else {
                     $this->line("   ➖ Cupón {$code} ya existe");
                 }
             } catch (\Exception $e) {
-                $this->error("   ❌ Error creando {$code}: " . $e->getMessage());
+                $this->error("   ❌ Error creando {$code}: ".$e->getMessage());
             }
         }
 
         $this->newLine();
-        
+
         // Mostrar cupones disponibles para testing
         $this->info('🎫 CUPONES DISPONIBLES PARA TESTING:');
         $availableCoupons = DB::table('discount_codes')
             ->where('is_used', 0)
-            ->where(function($query) {
+            ->where(function ($query) {
                 $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>', Carbon::now());
+                    ->orWhere('expires_at', '>', Carbon::now());
             })
             ->get();
 

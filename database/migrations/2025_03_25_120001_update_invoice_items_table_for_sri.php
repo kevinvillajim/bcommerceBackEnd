@@ -13,7 +13,7 @@ return new class extends Migration
             $table->renameColumn('description', 'product_name');
             $table->renameColumn('total', 'subtotal');
             $table->renameColumn('sri_product_code', 'product_code');
-            
+
             // ✅ Hacer product_code NOT NULL (slug es único y siempre existe)
             $table->string('product_code')->nullable(false)->change();
         });
@@ -26,7 +26,7 @@ return new class extends Migration
             $table->renameColumn('product_name', 'description');
             $table->renameColumn('subtotal', 'total');
             $table->renameColumn('product_code', 'sri_product_code');
-            
+
             // ✅ Revertir product_code a nullable
             $table->string('sri_product_code')->nullable()->change();
         });

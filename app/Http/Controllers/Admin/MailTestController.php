@@ -16,6 +16,7 @@ use Illuminate\Support\Str;
 class MailTestController extends Controller
 {
     private MailService $mailService;
+
     private MailManager $mailManager;
 
     public function __construct(MailService $mailService, MailManager $mailManager)
@@ -32,7 +33,7 @@ class MailTestController extends Controller
         try {
             Log::info('Mail test initiated by admin', [
                 'admin_id' => auth()->id(),
-                'test_type' => $request->input('type', 'general')
+                'test_type' => $request->input('type', 'general'),
             ]);
 
             // Get current mail configuration
@@ -51,7 +52,7 @@ class MailTestController extends Controller
             // Try to send a test email
             $testType = $request->input('type', 'general');
             $userId = $request->input('user_id');
-            
+
             $testResults = [];
 
             if ($testType === 'password_reset' || $testType === 'all') {
@@ -59,20 +60,20 @@ class MailTestController extends Controller
                 $user = $userId ? User::find($userId) : auth()->user();
                 if ($user) {
                     $token = Str::random(60);
-                    
+
                     // Save token to database
                     DB::table('password_reset_tokens')->updateOrInsert(
                         ['email' => $user->email],
                         [
                             'email' => $user->email,
                             'token' => hash('sha256', $token),
-                            'created_at' => now()
+                            'created_at' => now(),
                         ]
                     );
-                    
+
                     $result = $this->mailManager->sendPasswordResetEmail($user, $token);
                     $testResults['password_reset'] = $result;
-                    
+
                     // Clean up test token
                     DB::table('password_reset_tokens')->where('email', $user->email)->delete();
                 }
@@ -99,14 +100,14 @@ class MailTestController extends Controller
                     'configuration' => $mailConfig,
                     'connection_test' => $connectionTest,
                     'email_tests' => $testResults,
-                    'timestamp' => now()->toIso8601String()
-                ]
+                    'timestamp' => now()->toIso8601String(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Mail test failed', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -116,8 +117,8 @@ class MailTestController extends Controller
                 'debug' => config('app.debug') ? [
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),
-                    'trace' => explode("\n", $e->getTraceAsString())
-                ] : null
+                    'trace' => explode("\n", $e->getTraceAsString()),
+                ] : null,
             ], 500);
         }
     }
@@ -131,7 +132,7 @@ class MailTestController extends Controller
             // Check queue status
             $pendingJobs = DB::table('jobs')->count();
             $failedJobs = DB::table('failed_jobs')->count();
-            
+
             // Get recent failed mail jobs
             $recentFailures = [];
             if ($failedJobs > 0) {
@@ -140,14 +141,14 @@ class MailTestController extends Controller
                     ->orderBy('failed_at', 'desc')
                     ->limit(5)
                     ->get(['id', 'payload', 'exception', 'failed_at']);
-                
+
                 foreach ($failures as $failure) {
                     $payload = json_decode($failure->payload);
                     $recentFailures[] = [
                         'id' => $failure->id,
                         'job' => $payload->displayName ?? 'Unknown',
                         'failed_at' => $failure->failed_at,
-                        'error' => substr($failure->exception, 0, 200)
+                        'error' => substr($failure->exception, 0, 200),
                     ];
                 }
             }
@@ -161,22 +162,22 @@ class MailTestController extends Controller
                     'queue' => [
                         'pending_jobs' => $pendingJobs,
                         'failed_jobs' => $failedJobs,
-                        'recent_failures' => $recentFailures
+                        'recent_failures' => $recentFailures,
                     ],
                     'configuration' => $mailConfig,
-                    'status' => 'operational'
-                ]
+                    'status' => 'operational',
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to get mail status', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve mail status',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

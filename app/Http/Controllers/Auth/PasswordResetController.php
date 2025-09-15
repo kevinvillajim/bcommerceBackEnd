@@ -106,9 +106,10 @@ class PasswordResetController extends Controller
         try {
             $token = $request->query('token');
             $email = $request->query('email');
-            
-            if (!$token || !$email) {
+
+            if (! $token || ! $email) {
                 $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
                 return redirect()->to("{$frontendUrl}/forgot-password")
                     ->with('error', 'Token o email faltante');
             }
@@ -118,9 +119,10 @@ class PasswordResetController extends Controller
                 ->where('email', $email)
                 ->first();
 
-            if (!$tokenRecord) {
+            if (! $tokenRecord) {
                 Log::warning('Password reset token not found', ['email' => $email, 'token' => substr($token, 0, 10).'...']);
                 $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
                 return redirect()->to("{$frontendUrl}/forgot-password")
                     ->with('error', 'Token inválido o expirado');
             }
@@ -133,14 +135,16 @@ class PasswordResetController extends Controller
 
                 Log::warning('Password reset token expired', ['email' => $email, 'created_at' => $tokenRecord->created_at]);
                 $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
                 return redirect()->to("{$frontendUrl}/forgot-password")
                     ->with('error', 'El token ha expirado. Solicita uno nuevo.');
             }
 
             // Verificar que el token coincida
-            if (!Hash::check($token, $tokenRecord->token)) {
+            if (! Hash::check($token, $tokenRecord->token)) {
                 Log::warning('Password reset token mismatch', ['email' => $email, 'token' => substr($token, 0, 10).'...']);
                 $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
                 return redirect()->to("{$frontendUrl}/forgot-password")
                     ->with('error', 'Token inválido');
             }
@@ -148,7 +152,8 @@ class PasswordResetController extends Controller
             // Token válido, redirigir a la página de reset con los parámetros
             Log::info('Password reset token verified successfully', ['email' => $email, 'token' => substr($token, 0, 10).'...']);
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
-            return redirect()->to("{$frontendUrl}/reset-password?token={$token}&email=" . urlencode($email) . "&verified=true");
+
+            return redirect()->to("{$frontendUrl}/reset-password?token={$token}&email=".urlencode($email).'&verified=true');
 
         } catch (\Exception $e) {
             Log::error('Exception in PasswordResetController@verifyResetToken', [
@@ -157,6 +162,7 @@ class PasswordResetController extends Controller
             ]);
 
             $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+
             return redirect()->to("{$frontendUrl}/forgot-password")
                 ->with('error', 'Error interno del servidor');
         }

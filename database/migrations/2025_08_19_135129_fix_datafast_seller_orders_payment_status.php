@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -18,15 +16,15 @@ return new class extends Migration
             ->join('orders as o', 'so.order_id', '=', 'o.id')
             ->where('so.payment_status', 'pending')
             ->where('o.payment_status', 'completed')
-            ->where(function($query) {
+            ->where(function ($query) {
                 $query->where('o.payment_method', 'datafast')
-                      ->orWhereNull('o.payment_method');
+                    ->orWhereNull('o.payment_method');
             })
             ->count();
 
         // Verificar si estamos usando SQLite
         $driver = DB::getDriverName();
-        
+
         if ($driver === 'sqlite') {
             // Para SQLite usar subconsulta en lugar de JOIN
             DB::statement("

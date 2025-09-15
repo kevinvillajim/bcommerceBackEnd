@@ -74,7 +74,7 @@ class PlatformCommissionController extends Controller
             $this->configService->setConfig('platform.commission_rate', $commissionRate);
             $this->configService->setConfig('platform.commission_enabled', $enabled);
             $this->configService->setConfig('platform.commission_updated_at', now()->toISOString());
-            
+
             // ✅ NUEVO: Actualizar versión para invalidar cache del frontend
             $this->configService->setConfig('platform.version', time());
 
@@ -122,7 +122,7 @@ class PlatformCommissionController extends Controller
             $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
             $enabled = $this->configService->getConfig('platform.commission_enabled', true);
 
-            if (!$enabled) {
+            if (! $enabled) {
                 return response()->json([
                     'status' => 'success',
                     'data' => [

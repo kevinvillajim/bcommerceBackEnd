@@ -33,7 +33,7 @@ class AccountingServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(GenerateInvoicePdfUseCase::class, function ($app) {
-            return new GenerateInvoicePdfUseCase();
+            return new GenerateInvoicePdfUseCase;
         });
     }
 

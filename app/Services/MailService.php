@@ -48,7 +48,7 @@ class MailService
     public function sendNotificationEmail(User $user, string $subject, string $message, array $additionalData = []): bool
     {
         $emailType = $additionalData['email_type'] ?? 'notification';
-        
+
         // Map old additionalData format to new format
         $mappedData = [
             'sent_by_admin' => $additionalData['sent_by_admin'] ?? false,
@@ -59,7 +59,7 @@ class MailService
             'action_text' => $additionalData['action_text'] ?? null,
             'additional_info' => $additionalData['additional_info'] ?? [],
         ];
-        
+
         return $this->mailManager->sendNotificationEmail($user, $subject, $message, $emailType, $mappedData);
     }
 
@@ -95,7 +95,7 @@ class MailService
         if (method_exists($this->mailManager, $method)) {
             return call_user_func_array([$this->mailManager, $method], $parameters);
         }
-        
+
         throw new \BadMethodCallException("Method {$method} does not exist.");
     }
 }

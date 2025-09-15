@@ -13,11 +13,11 @@ use Illuminate\Support\Facades\Validator;
 
 /**
  * ⚠️ CONTROLADOR CRÍTICO - CONFIGURACIONES FINANCIERAS
- * 
+ *
  * Maneja configuraciones que afectan directamente los ingresos:
  * - Comisiones de plataforma
  * - Distribución de costos de envío
- * 
+ *
  * REQUIERE MÁXIMA SEGURIDAD Y AUDITORÍA
  */
 class FinancialConfigurationController extends Controller
@@ -27,8 +27,8 @@ class FinancialConfigurationController extends Controller
      */
     private const FINANCIAL_KEYS = [
         'platform.commission_rate',
-        'shipping.seller_percentage', 
-        'shipping.max_seller_percentage'
+        'shipping.seller_percentage',
+        'shipping.max_seller_percentage',
     ];
 
     /**
@@ -38,11 +38,12 @@ class FinancialConfigurationController extends Controller
     {
         try {
             // Verificar permisos de super admin
-            if (!$this->isSuperAdmin()) {
+            if (! $this->isSuperAdmin()) {
                 $this->logSecurityEvent('UNAUTHORIZED_FINANCIAL_ACCESS', $request);
+
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Acceso denegado: se requieren permisos de super administrador'
+                    'message' => 'Acceso denegado: se requieren permisos de super administrador',
                 ], 403);
             }
 
@@ -55,7 +56,7 @@ class FinancialConfigurationController extends Controller
             // Formatear respuesta con valores por defecto
             $response = [
                 'platform_commission_rate' => $configurations->get('platform.commission_rate')?->value ?? '10.0',
-                'shipping_seller_percentage' => $configurations->get('shipping.seller_percentage')?->value ?? '80.0', 
+                'shipping_seller_percentage' => $configurations->get('shipping.seller_percentage')?->value ?? '80.0',
                 'shipping_max_seller_percentage' => $configurations->get('shipping.max_seller_percentage')?->value ?? '40.0',
                 'last_updated' => $configurations->max('updated_at'),
             ];
@@ -63,7 +64,7 @@ class FinancialConfigurationController extends Controller
             Log::info('Financial configurations accessed', [
                 'admin_id' => Auth::id(),
                 'ip' => $request->ip(),
-                'user_agent' => $request->userAgent()
+                'user_agent' => $request->userAgent(),
             ]);
 
             return response()->json($response);
@@ -72,12 +73,12 @@ class FinancialConfigurationController extends Controller
             Log::error('Error retrieving financial configurations', [
                 'error' => $e->getMessage(),
                 'admin_id' => Auth::id(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error interno al obtener configuraciones'
+                'message' => 'Error interno al obtener configuraciones',
             ], 500);
         }
     }
@@ -89,11 +90,12 @@ class FinancialConfigurationController extends Controller
     {
         try {
             // Verificar permisos de super admin
-            if (!$this->isSuperAdmin()) {
+            if (! $this->isSuperAdmin()) {
                 $this->logSecurityEvent('UNAUTHORIZED_FINANCIAL_MODIFICATION', $request);
+
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Acceso denegado: se requieren permisos de super administrador'
+                    'message' => 'Acceso denegado: se requieren permisos de super administrador',
                 ], 403);
             }
 
@@ -103,7 +105,7 @@ class FinancialConfigurationController extends Controller
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Datos de entrada inválidos',
-                    'errors' => $validator->errors()
+                    'errors' => $validator->errors(),
                 ], 422);
             }
 
@@ -131,7 +133,7 @@ class FinancialConfigurationController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Configuraciones financieras actualizadas exitosamente',
-                'timestamp' => now()->toISOString()
+                'timestamp' => now()->toISOString(),
             ]);
 
         } catch (\Exception $e) {
@@ -139,12 +141,12 @@ class FinancialConfigurationController extends Controller
                 'error' => $e->getMessage(),
                 'admin_id' => Auth::id(),
                 'input' => $request->all(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error interno al actualizar configuraciones'
+                'message' => 'Error interno al actualizar configuraciones',
             ], 500);
         }
     }
@@ -160,35 +162,35 @@ class FinancialConfigurationController extends Controller
                 'numeric',
                 'min:0',
                 'max:50',
-                'regex:/^\d+(\.\d{1,2})?$/' // Máximo 2 decimales
+                'regex:/^\d+(\.\d{1,2})?$/', // Máximo 2 decimales
             ],
             'shipping_seller_percentage' => [
                 'required',
-                'numeric', 
+                'numeric',
                 'min:0',
                 'max:100',
-                'regex:/^\d+(\.\d{1,2})?$/'
+                'regex:/^\d+(\.\d{1,2})?$/',
             ],
             'shipping_max_seller_percentage' => [
                 'required',
                 'numeric',
-                'min:0', 
+                'min:0',
                 'max:100',
-                'regex:/^\d+(\.\d{1,2})?$/'
-            ]
+                'regex:/^\d+(\.\d{1,2})?$/',
+            ],
         ], [
             'platform_commission_rate.required' => 'La comisión de plataforma es obligatoria',
             'platform_commission_rate.numeric' => 'La comisión debe ser un número',
             'platform_commission_rate.min' => 'La comisión no puede ser negativa',
             'platform_commission_rate.max' => 'La comisión no puede ser mayor al 50%',
             'platform_commission_rate.regex' => 'La comisión debe tener máximo 2 decimales',
-            
+
             'shipping_seller_percentage.required' => 'El porcentaje de envío es obligatorio',
             'shipping_seller_percentage.numeric' => 'El porcentaje debe ser un número',
             'shipping_seller_percentage.min' => 'El porcentaje no puede ser negativo',
             'shipping_seller_percentage.max' => 'El porcentaje no puede ser mayor al 100%',
             'shipping_seller_percentage.regex' => 'El porcentaje debe tener máximo 2 decimales',
-            
+
             'shipping_max_seller_percentage.required' => 'El porcentaje máximo es obligatorio',
             'shipping_max_seller_percentage.numeric' => 'El porcentaje debe ser un número',
             'shipping_max_seller_percentage.min' => 'El porcentaje no puede ser negativo',
@@ -212,9 +214,9 @@ class FinancialConfigurationController extends Controller
                 'message' => 'Regla de negocio violada',
                 'errors' => [
                     'shipping_max_seller_percentage' => [
-                        'El porcentaje máximo debe ser menor al porcentaje para un solo vendedor'
-                    ]
-                ]
+                        'El porcentaje máximo debe ser menor al porcentaje para un solo vendedor',
+                    ],
+                ],
             ], 422);
         }
 
@@ -226,9 +228,9 @@ class FinancialConfigurationController extends Controller
                 'message' => 'Advertencia de negocio',
                 'errors' => [
                     'platform_commission_rate' => [
-                        'Una comisión mayor al 25% podría afectar negativamente a los vendedores'
-                    ]
-                ]
+                        'Una comisión mayor al 25% podría afectar negativamente a los vendedores',
+                    ],
+                ],
             ], 422);
         }
 
@@ -246,7 +248,7 @@ class FinancialConfigurationController extends Controller
                 'value' => (string) $value,
                 'group' => 'financial',
                 'type' => 'decimal',
-                'updated_at' => now()
+                'updated_at' => now(),
             ]
         );
     }
@@ -273,10 +275,12 @@ class FinancialConfigurationController extends Controller
     private function isSuperAdmin(): bool
     {
         $user = Auth::user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
 
-        return $user->isAdmin() && 
-               $user->admin && 
+        return $user->isAdmin() &&
+               $user->admin &&
                $user->admin->role === 'super_admin';
     }
 
@@ -285,12 +289,12 @@ class FinancialConfigurationController extends Controller
      */
     private function logSecurityEvent(string $event, Request $request): void
     {
-        Log::warning('SECURITY EVENT: ' . $event, [
+        Log::warning('SECURITY EVENT: '.$event, [
             'user_id' => Auth::id(),
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'timestamp' => now(),
-            'requested_url' => $request->fullUrl()
+            'requested_url' => $request->fullUrl(),
         ]);
     }
 
@@ -305,7 +309,7 @@ class FinancialConfigurationController extends Controller
             if ($oldValue !== (string) $newValue) {
                 $changes[$key] = [
                     'old' => $oldValue,
-                    'new' => (string) $newValue
+                    'new' => (string) $newValue,
                 ];
             }
         }
@@ -316,7 +320,7 @@ class FinancialConfigurationController extends Controller
             'changes' => $changes,
             'ip' => $request->ip(),
             'user_agent' => $request->userAgent(),
-            'timestamp' => now()
+            'timestamp' => now(),
         ]);
 
         // También guardar en tabla de auditoría si existe
@@ -326,13 +330,13 @@ class FinancialConfigurationController extends Controller
                 'action' => 'financial_configuration_update',
                 'details' => json_encode([
                     'changes' => $changes,
-                    'ip' => $request->ip()
+                    'ip' => $request->ip(),
                 ]),
-                'created_at' => now()
+                'created_at' => now(),
             ]);
         } catch (\Exception $e) {
             // Si no existe la tabla, solo loggeamos
-            Log::warning('Could not save to admin_logs table: ' . $e->getMessage());
+            Log::warning('Could not save to admin_logs table: '.$e->getMessage());
         }
     }
 }

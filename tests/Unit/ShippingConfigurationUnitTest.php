@@ -9,12 +9,13 @@ use Tests\TestCase;
 class ShippingConfigurationUnitTest extends TestCase
 {
     private $configService;
+
     private $pricingService;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->configService = app(ConfigurationService::class);
         $this->pricingService = app(PricingService::class);
     }
@@ -36,7 +37,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 25.00,
                 'base_price' => 25.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -64,7 +65,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 30.00,
                 'base_price' => 30.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -91,7 +92,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 10.00,
                 'base_price' => 10.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -119,7 +120,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 50.00,
                 'base_price' => 50.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -146,7 +147,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 30.00,
                 'base_price' => 50.00, // Original price is 50, discounted to 30
                 'discount_percentage' => 40, // 40% discount
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -172,7 +173,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 20.00,
                 'base_price' => 20.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -204,7 +205,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 20.00,
                 'base_price' => 20.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -239,7 +240,7 @@ class ShippingConfigurationUnitTest extends TestCase
                 'price' => 25.00,
                 'base_price' => 25.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);

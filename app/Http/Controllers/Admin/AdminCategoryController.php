@@ -171,7 +171,7 @@ class AdminCategoryController extends Controller
                 foreach ($validated as $field => $value) {
                     $oldValue = $category->$field;
                     $category->$field = $value;
-                    
+
                     Log::info("AdminCategoryController::partialUpdate - Actualizando {$field}:", [
                         'anterior' => $oldValue,
                         'nuevo' => $value,

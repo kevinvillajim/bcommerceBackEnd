@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\DatafastController;
 use App\Http\Requests\CheckoutRequest;
 use App\UseCases\Checkout\ProcessCheckoutUseCase;
 use Illuminate\Http\Request;
@@ -38,12 +37,14 @@ class CheckoutController extends Controller
             // ✅ NUEVO: Obtener totales calculados del frontend
             $calculatedTotals = $request->getCalculatedTotals();
 
-            // ✅ ACTUALIZADO: Log para debug incluyendo información de items y totales
-            Log::info('🛒 Iniciando checkout con items validados y totales del frontend', [
+            // ✅ ETAPA 2: Log para debug incluyendo billing y shipping addresses
+            Log::info('🛒 ETAPA 2: Checkout iniciado - datos recibidos correctamente', [
                 'user_id' => $userId,
                 'payment_method' => $validated['payment']['method'],
                 'items_count' => count($items),
-                'items' => $items,
+                'shipping_address' => $validated['shippingAddress'],
+                'billing_address' => $validated['billingAddress'],
+                'addresses_are_same' => $validated['shippingAddress'] === $validated['billingAddress'],
                 'calculated_totals' => $calculatedTotals,
             ]);
 
@@ -52,36 +53,38 @@ class CheckoutController extends Controller
             if ($validated['payment']['method'] === 'datafast') {
                 Log::info('🔄 Delegando checkout DATAFAST al DatafastController especializado', [
                     'calculated_totals' => $calculatedTotals,
-                    'items' => $items
+                    'items' => $items,
                 ]);
-                
+
                 // ✅ TRANSFORMAR datos del cálculo centralizado al formato que espera DatafastController
                 $transformedData = array_merge($request->all(), [
                     'total' => $calculatedTotals['total'],
-                    'subtotal' => $calculatedTotals['subtotal'], 
+                    'subtotal' => $calculatedTotals['subtotal'],
                     'shipping_cost' => $calculatedTotals['shipping'],
                     'tax' => $calculatedTotals['tax'],
                     'items' => $items, // Usar items validados
                 ]);
-                
+
                 // Crear nuevo request con datos transformados
                 $transformedRequest = new Request($transformedData);
                 $transformedRequest->setUserResolver($request->getUserResolver());
-                
+
                 // Crear instancia del DatafastController y delegar
                 $datafastController = app(DatafastController::class);
+
                 return $datafastController->createCheckout($transformedRequest);
             }
 
-            // Ejecutar el caso de uso con items validados y totales calculados
+            // ✅ ETAPA 2: Ejecutar UseCase con billing y shipping addresses separados
             $result = $this->processCheckoutUseCase->execute(
                 $userId,
                 $validated['payment'],
-                $validated['shipping'],
-                $items, // ✅ NUEVO: Pasar items validados
+                $validated['shippingAddress'], // Datos de envío
+                $validated['billingAddress'], // ✅ NUEVO: Datos de facturación separados
+                $items, // Items validados
                 $validated['seller_id'] ?? null,
                 $validated['discount_code'] ?? null,
-                $calculatedTotals // ✅ NUEVO: Pasar totales calculados
+                $calculatedTotals // Totales calculados del frontend
             );
 
             // Si hay múltiples órdenes de vendedor, incluir información básica

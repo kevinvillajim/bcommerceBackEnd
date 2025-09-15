@@ -27,13 +27,13 @@ class ShippingDistributionController extends Controller
             $config = [
                 // Porcentaje máximo que un seller puede recibir del costo de envío (cuando es solo 1 seller)
                 'single_seller_max_percentage' => $this->configService->getConfig('shipping_distribution.single_seller_max', 80.0),
-                
+
                 // Porcentaje que cada seller recibe cuando hay múltiples sellers (ej: 40% c/u si son 2)
                 'multiple_sellers_percentage_each' => $this->configService->getConfig('shipping_distribution.multiple_sellers_each', 40.0),
-                
+
                 // Si la distribución está habilitada
                 'enabled' => $this->configService->getConfig('shipping_distribution.enabled', true),
-                
+
                 'last_updated' => $this->configService->getConfig('shipping_distribution.updated_at', now()->toISOString()),
             ];
 
@@ -83,7 +83,7 @@ class ShippingDistributionController extends Controller
             $this->configService->setConfig('shipping_distribution.multiple_sellers_each', $multipleEach);
             $this->configService->setConfig('shipping_distribution.enabled', $enabled);
             $this->configService->setConfig('shipping_distribution.updated_at', now()->toISOString());
-            
+
             // ✅ NUEVO: Actualizar versión para invalidar cache del frontend
             $this->configService->setConfig('shipping_distribution.version', time());
 
@@ -130,10 +130,10 @@ class ShippingDistributionController extends Controller
 
             $shippingCost = $request->input('shipping_cost');
             $sellerCount = $request->input('seller_count');
-            
+
             $enabled = $this->configService->getConfig('shipping_distribution.enabled', true);
 
-            if (!$enabled) {
+            if (! $enabled) {
                 return response()->json([
                     'status' => 'success',
                     'data' => [
@@ -152,7 +152,7 @@ class ShippingDistributionController extends Controller
                 $percentage = $this->configService->getConfig('shipping_distribution.single_seller_max', 80.0);
                 $sellerAmount = ($shippingCost * $percentage) / 100;
                 $platformKeeps = $shippingCost - $sellerAmount;
-                
+
                 return response()->json([
                     'status' => 'success',
                     'data' => [
@@ -171,7 +171,7 @@ class ShippingDistributionController extends Controller
                 $amountPerSeller = ($shippingCost * $percentageEach) / 100;
                 $totalDistributed = $amountPerSeller * $sellerCount;
                 $platformKeeps = $shippingCost - $totalDistributed;
-                
+
                 return response()->json([
                     'status' => 'success',
                     'data' => [

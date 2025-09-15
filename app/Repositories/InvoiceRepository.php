@@ -17,40 +17,40 @@ class InvoiceRepository
             ->orderBy('created_at', 'desc');
 
         // ✅ Filtro por estado
-        if (!empty($filters['status'])) {
+        if (! empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
 
         // ✅ Filtro por rango de fechas
-        if (!empty($filters['date_from'])) {
+        if (! empty($filters['date_from'])) {
             $query->whereDate('issue_date', '>=', $filters['date_from']);
         }
 
-        if (!empty($filters['date_to'])) {
+        if (! empty($filters['date_to'])) {
             $query->whereDate('issue_date', '<=', $filters['date_to']);
         }
 
         // ✅ Filtro por identificación de cliente
-        if (!empty($filters['customer_identification'])) {
-            $query->where('customer_identification', 'like', '%' . $filters['customer_identification'] . '%');
+        if (! empty($filters['customer_identification'])) {
+            $query->where('customer_identification', 'like', '%'.$filters['customer_identification'].'%');
         }
 
         // ✅ Filtro por nombre de cliente
-        if (!empty($filters['customer_name'])) {
-            $query->where('customer_name', 'like', '%' . $filters['customer_name'] . '%');
+        if (! empty($filters['customer_name'])) {
+            $query->where('customer_name', 'like', '%'.$filters['customer_name'].'%');
         }
 
         // ✅ Filtro por número de factura
-        if (!empty($filters['invoice_number'])) {
-            $query->where('invoice_number', 'like', '%' . $filters['invoice_number'] . '%');
+        if (! empty($filters['invoice_number'])) {
+            $query->where('invoice_number', 'like', '%'.$filters['invoice_number'].'%');
         }
 
         // ✅ Filtro por rango de montos
-        if (!empty($filters['amount_from'])) {
+        if (! empty($filters['amount_from'])) {
             $query->where('total_amount', '>=', $filters['amount_from']);
         }
 
-        if (!empty($filters['amount_to'])) {
+        if (! empty($filters['amount_to'])) {
             $query->where('total_amount', '<=', $filters['amount_to']);
         }
 
@@ -88,8 +88,8 @@ class InvoiceRepository
         ];
 
         // ✅ Calcular tasa de éxito
-        $stats['success_rate'] = $stats['total'] > 0 
-            ? round(($stats['authorized'] / $stats['total']) * 100, 2) 
+        $stats['success_rate'] = $stats['total'] > 0
+            ? round(($stats['authorized'] / $stats['total']) * 100, 2)
             : 0;
 
         // ✅ Totales monetarios por estado
@@ -168,7 +168,7 @@ class InvoiceRepository
     public function getMonthlyReport(int $year, int $month): array
     {
         $startDate = "{$year}-{$month}-01";
-        $endDate = date("Y-m-t", strtotime($startDate)); // Último día del mes
+        $endDate = date('Y-m-t', strtotime($startDate)); // Último día del mes
 
         $invoices = Invoice::whereBetween('issue_date', [$startDate, $endDate])
             ->where('status', Invoice::STATUS_AUTHORIZED)
@@ -179,22 +179,22 @@ class InvoiceRepository
                 'year' => $year,
                 'month' => $month,
                 'start_date' => $startDate,
-                'end_date' => $endDate
+                'end_date' => $endDate,
             ],
             'totals' => [
                 'count' => $invoices->count(),
                 'subtotal' => $invoices->sum('subtotal'),
                 'tax_amount' => $invoices->sum('tax_amount'),
-                'total_amount' => $invoices->sum('total_amount')
+                'total_amount' => $invoices->sum('total_amount'),
             ],
-            'daily_breakdown' => $invoices->groupBy(function($invoice) {
+            'daily_breakdown' => $invoices->groupBy(function ($invoice) {
                 return $invoice->issue_date->format('Y-m-d');
-            })->map(function($dayInvoices) {
+            })->map(function ($dayInvoices) {
                 return [
                     'count' => $dayInvoices->count(),
-                    'total_amount' => $dayInvoices->sum('total_amount')
+                    'total_amount' => $dayInvoices->sum('total_amount'),
                 ];
-            })
+            }),
         ];
     }
 }

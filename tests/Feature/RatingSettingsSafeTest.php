@@ -44,7 +44,6 @@ class RatingSettingsSafeTest extends TestCase
         $this->assertEquals($ratingConfigs['auto_approve_all'], $responseData['ratings.auto_approve_all']['value']);
         $this->assertEquals($ratingConfigs['auto_approve_threshold'], $responseData['ratings.auto_approve_threshold']['value']);
 
-
         // TEST 2: Verificar estructura de actualización de ratings
 
         $updatedRatingConfigs = [
@@ -63,7 +62,6 @@ class RatingSettingsSafeTest extends TestCase
             $this->assertArrayHasKey($key, $updatedRatingConfigs, "Missing key: {$key}");
         }
 
-
         // TEST 3: Verificar tipos de datos específicos
 
         $typeTestConfigs = [
@@ -74,7 +72,6 @@ class RatingSettingsSafeTest extends TestCase
         // Verificar tipos de datos sin usar el controller (no DB)
         $this->assertIsBool($typeTestConfigs['auto_approve_all'], 'Expected boolean for auto_approve_all');
         $this->assertIsInt($typeTestConfigs['auto_approve_threshold'], 'Expected int for auto_approve_threshold');
-
 
         // TEST 4: Verificar rangos de configuración
 
@@ -88,7 +85,6 @@ class RatingSettingsSafeTest extends TestCase
 
         $this->assertGreaterThanOrEqual(1, $rangeConfigs['auto_approve_threshold']);
         $this->assertLessThanOrEqual(5, $rangeConfigs['auto_approve_threshold']);
-
 
         // TEST 5: Verificar lógica de negocio de ratings
 
@@ -108,7 +104,7 @@ class RatingSettingsSafeTest extends TestCase
 
         // Verificar que el threshold tiene sentido para moderación
         // Note: Low threshold may auto-approve negative reviews
-        
+
         // TEST 6: Verificar casos edge de ratings
 
         $edgeConfigs = [

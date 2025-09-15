@@ -7,13 +7,13 @@ use App\Domain\Interfaces\ChatFilterInterface;
 use App\Domain\Interfaces\JwtServiceInterface;
 use App\Domain\Interfaces\PaymentGatewayInterface;
 use App\Domain\Interfaces\ShippingTrackingInterface;
-use App\Infrastructure\External\PaymentGateway\DatafastService;
+use App\Domain\Services\PricingCalculatorService;
 // Implementaciones
+use App\Infrastructure\External\PaymentGateway\DatafastService;
 use App\Infrastructure\Services\ChatFilterService;
 use App\Infrastructure\Services\JwtService;
-use App\Infrastructure\Services\ShippingTrackingService;
 // Domain Services
-use App\Domain\Services\PricingCalculatorService;
+use App\Infrastructure\Services\ShippingTrackingService;
 use Illuminate\Support\ServiceProvider;
 
 class InterfacesServiceProvider extends ServiceProvider
@@ -41,7 +41,7 @@ class InterfacesServiceProvider extends ServiceProvider
         foreach ($this->interfaces as $interface => $implementation) {
             $this->app->bind($interface, $implementation);
         }
-        
+
         // Registrar PricingCalculatorService como singleton para eficiencia
         $this->app->singleton(PricingCalculatorService::class);
     }

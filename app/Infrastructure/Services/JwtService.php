@@ -5,7 +5,6 @@ namespace App\Infrastructure\Services;
 use App\Domain\Interfaces\JwtServiceInterface;
 use App\Helpers\TokenHelper;
 use App\Models\User;
-use App\Services\ConfigurationService;
 use Illuminate\Support\Facades\Log;
 use Tymon\JWTAuth\Exceptions\JWTException;
 use Tymon\JWTAuth\Exceptions\TokenExpiredException;
@@ -14,36 +13,13 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 class JwtService implements JwtServiceInterface
 {
-    private ConfigurationService $configService;
-
-    public function __construct(ConfigurationService $configService)
-    {
-        $this->configService = $configService;
-    }
 
     /**
-     * Get TTL from database configuration
+     * Get session timeout from centralized configuration (simple approach)
      */
-    private function getSessionTimeout(): int
+    public function getSessionTimeout(): int
     {
-        try {
-            // Get sessionTimeout from database configuration (in minutes)
-            $sessionTimeout = $this->configService->getConfig('security.sessionTimeout', 60);
-
-            // Ensure it's an integer
-            if (is_numeric($sessionTimeout)) {
-                return (int) $sessionTimeout;
-            }
-
-            // Default to 60 minutes if invalid
-            return 60;
-        } catch (\Exception $e) {
-            Log::error('Error getting session timeout from configuration', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return 60; // Default fallback
-        }
+        return config('session_timeout.ttl');
     }
 
     /**
@@ -75,17 +51,10 @@ class JwtService implements JwtServiceInterface
     public function generateToken(User $user): string
     {
         try {
-            // Get TTL from database configuration
-            $ttl = $this->getSessionTimeout();
-
-            // Temporarily modify the config to use database setting
-            config(['jwt.ttl' => $ttl]);
-
             Log::info('Token Generation Debug', [
                 'user_id' => $user->id,
-                'ttl_from_db' => $ttl,
-                'ttl_type' => gettype($ttl),
-                'source' => 'database_configuration',
+                'jwt_ttl_config' => config('jwt.ttl'),
+                'source' => 'jwt_configuration',
             ]);
 
             $token = JWTAuth::fromUser($user);
@@ -139,12 +108,6 @@ class JwtService implements JwtServiceInterface
                 throw new JWTException('No token found in request');
             }
 
-            // Get current session timeout from database
-            $ttl = $this->getSessionTimeout();
-
-            // Update JWT config before refreshing
-            config(['jwt.ttl' => $ttl]);
-
             // Validate the current token first
             $validationResult = TokenHelper::validateToken($token);
             if (! $validationResult['valid']) {
@@ -152,11 +115,11 @@ class JwtService implements JwtServiceInterface
             }
 
             Log::info('Token Refresh Debug', [
-                'ttl_from_db' => $ttl,
-                'source' => 'database_configuration',
+                'jwt_ttl_config' => config('jwt.ttl'),
+                'source' => 'jwt_configuration',
             ]);
 
-            // Refresh the token with new TTL
+            // Refresh the token
             return JWTAuth::refresh($token);
         } catch (JWTException $e) {
             Log::error('Error refreshing token: '.$e->getMessage());
@@ -238,17 +201,6 @@ class JwtService implements JwtServiceInterface
      */
     public function getTokenTTL(): int
     {
-        try {
-            // Get TTL from database configuration
-            $ttl = $this->getSessionTimeout();
-
-            return $ttl * 60; // Convert minutes to seconds
-        } catch (\Exception $e) {
-            Log::error('Error getting token TTL', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return 3600; // Fallback to 1 hour in seconds
-        }
+        return config('session_timeout.ttl_seconds');
     }
 }

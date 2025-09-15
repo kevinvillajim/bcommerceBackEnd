@@ -14,9 +14,9 @@ class Kernel extends ConsoleKernel
     {
         // Schedule expired payments cleanup every 5 minutes
         $schedule->command('payments:cleanup-expired')
-                 ->everyFiveMinutes()
-                 ->withoutOverlapping()
-                 ->runInBackground();
+            ->everyFiveMinutes()
+            ->withoutOverlapping()
+            ->runInBackground();
     }
 
     /**

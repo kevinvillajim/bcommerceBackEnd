@@ -16,11 +16,11 @@ class SecurityHeadersMiddleware
         $response = $next($request);
 
         // Only add security headers to HTML responses
-        if (!$response->headers->has('Content-Type') || 
-            !str_contains($response->headers->get('Content-Type'), 'text/html')) {
+        if (! $response->headers->has('Content-Type') ||
+            ! str_contains($response->headers->get('Content-Type'), 'text/html')) {
             return $response;
         }
-        
+
         // TEMPORALMENTE DESACTIVADO EN DESARROLLO PARA DATAFAST
         // El widget de Datafast tiene su propio CSP embebido que entra en conflicto
         if (config('app.env') === 'local') {
@@ -29,7 +29,7 @@ class SecurityHeadersMiddleware
 
         // Get allowed origins from CORS config
         $frontendUrl = config('cors.allowed_origins')[0] ?? 'https://comersia.app';
-        
+
         // Parse domain from URL
         $parsedUrl = parse_url($frontendUrl);
         $domain = $parsedUrl['host'] ?? 'comersia.app';
@@ -48,18 +48,18 @@ class SecurityHeadersMiddleware
             "form-action 'self' https://eu-test.oppwa.com https://eu-prod.oppwa.com",
             "frame-src 'self' https://eu-test.oppwa.com https://eu-prod.oppwa.com",
             "frame-ancestors 'none'",
-            "upgrade-insecure-requests",
+            'upgrade-insecure-requests',
         ];
 
         $response->headers->set('Content-Security-Policy', implode('; ', $csp));
-        
+
         // Additional security headers
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('X-XSS-Protection', '1; mode=block');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-        
+
         // Strict Transport Security (only for HTTPS)
         if ($request->isSecure()) {
             $response->headers->set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');

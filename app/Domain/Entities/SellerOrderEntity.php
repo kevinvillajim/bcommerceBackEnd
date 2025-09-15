@@ -74,7 +74,7 @@ class SellerOrderEntity
         $this->volumeDiscountSavings = $volumeDiscountSavings;
         $this->volumeDiscountsApplied = $volumeDiscountsApplied;
         $this->shippingCost = $shippingCost;
-        
+
         // ✅ NUEVOS: Campos de pago
         $this->paymentStatus = $paymentStatus;
         $this->paymentMethod = $paymentMethod;
@@ -400,7 +400,7 @@ class SellerOrderEntity
             'volume_discount_savings' => $this->volumeDiscountSavings,
             'volume_discounts_applied' => $this->volumeDiscountsApplied,
             'shipping_cost' => $this->shippingCost,
-            
+
             // ✅ NUEVOS: Campos de pago
             'payment_status' => $this->paymentStatus,
             'payment_method' => $this->paymentMethod,

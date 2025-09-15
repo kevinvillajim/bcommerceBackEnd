@@ -13,11 +13,11 @@ return new class extends Migration
     public function up(): void
     {
         // Verificar que las tablas existan antes de insertar datos
-        if (!Schema::hasTable('configurations')) {
+        if (! Schema::hasTable('configurations')) {
             throw new Exception('La tabla configurations no existe. Ejecute primero php artisan migrate');
         }
 
-        if (!Schema::hasTable('platform_configurations')) {
+        if (! Schema::hasTable('platform_configurations')) {
             throw new Exception('La tabla platform_configurations no existe. Ejecute primero php artisan migrate');
         }
 
@@ -231,7 +231,7 @@ return new class extends Migration
 
         foreach ($platformConfigs as $config) {
             $exists = DB::table('platform_configurations')->where('key', $config['key'])->exists();
-            if (!$exists) {
+            if (! $exists) {
                 $config['created_at'] = now();
                 $config['updated_at'] = now();
                 DB::table('platform_configurations')->insert($config);
@@ -278,12 +278,12 @@ return new class extends Migration
     {
         foreach ($configurations as $config) {
             $exists = DB::table('configurations')->where('key', $config['key'])->exists();
-            
-            if (!$exists) {
+
+            if (! $exists) {
                 $config['created_at'] = now();
                 $config['updated_at'] = now();
                 DB::table('configurations')->insert($config);
-                
+
                 echo "✅ Insertada configuración: {$config['key']} = {$config['value']}\n";
             } else {
                 echo "⚠️  Ya existe configuración: {$config['key']}\n";

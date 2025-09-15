@@ -29,6 +29,7 @@ class Order extends Model
         'payment_status',
         'payment_details',
         'shipping_data',
+        'billing_data', // ✅ NUEVO: Datos de facturación separados para SRI
         'feedback_discount_code',
         'feedback_discount_amount',
         'feedback_discount_percentage',
@@ -55,6 +56,7 @@ class Order extends Model
         'total' => 'float',
         'payment_details' => 'array',
         'shipping_data' => 'array',
+        'billing_data' => 'array', // ✅ NUEVO: Cast billing_data como array
         'feedback_discount_amount' => 'float',
         'feedback_discount_percentage' => 'float',
         // ✅ NUEVO: Casts para campos de pricing

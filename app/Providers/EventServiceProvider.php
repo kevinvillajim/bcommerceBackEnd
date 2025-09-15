@@ -4,25 +4,24 @@ namespace App\Providers;
 
 use App\Events\FeedbackCreated;
 use App\Events\FeedbackReviewed;
+use App\Events\InvoiceApproved;
+use App\Events\InvoiceGenerated;
+// Nuevos eventos para notificaciones
 use App\Events\MessageSent;
 use App\Events\OrderCompleted;
-// Nuevos eventos para notificaciones
 use App\Events\OrderCreated;
 use App\Events\OrderStatusChanged;
 use App\Events\ProductStockUpdated;
 use App\Events\ProductUpdated;
 use App\Events\RatingCreated;
+// Listeners para notificaciones
 use App\Events\SellerAccountBlocked;
 use App\Events\SellerRankChanged;
-// Listeners para notificaciones
 use App\Events\SellerStrikeAdded;
 use App\Events\ShippingDelayed;
 use App\Events\ShippingStatusUpdated;
-use App\Events\InvoiceGenerated;
-use App\Events\InvoiceApproved;
-use App\Listeners\GenerateInvoiceListener;
 use App\Listeners\GenerateInvoiceFromOrderListener;
-use App\Listeners\SendInvoiceToSriListener;
+use App\Listeners\GeneratePdfFromInvoiceListener;
 use App\Listeners\NotifyAdminOfFeedback;
 use App\Listeners\NotifyAdminSellerRankUp;
 use App\Listeners\NotifySellerOfAccountBlock;
@@ -35,13 +34,13 @@ use App\Listeners\NotifySellerOfStrike;
 use App\Listeners\NotifySellerRankChanged;
 // Seller notification listeners
 use App\Listeners\SendFeedbackResponseNotification;
+use App\Listeners\SendInvoiceToSriListener;
 use App\Listeners\SendNewMessageNotification;
 use App\Listeners\SendOrderStatusNotification;
 use App\Listeners\SendProductUpdateNotifications;
 use App\Listeners\SendRatingReceivedNotification;
 use App\Listeners\SendRatingRequestNotification;
 use App\Listeners\SendShippingStatusNotification;
-use App\Listeners\GeneratePdfFromInvoiceListener;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 

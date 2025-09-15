@@ -213,20 +213,20 @@ class AdminUserController extends Controller
 
             // Generar token de restablecimiento
             $token = Str::random(60);
-            
+
             // Guardar token en la base de datos
             DB::table('password_reset_tokens')->updateOrInsert(
                 ['email' => $user->email],
                 [
                     'email' => $user->email,
                     'token' => hash('sha256', $token),
-                    'created_at' => now()
+                    'created_at' => now(),
                 ]
             );
 
             // Usar el MailManager directamente para enviar el correo
             $mailManager = app(MailManager::class);
-            
+
             // Enviar correo de restablecimiento
             $emailSent = $mailManager->sendPasswordResetEmail($user, $token);
 
@@ -234,9 +234,9 @@ class AdminUserController extends Controller
                 Log::info('Password reset email sent by admin', [
                     'admin_id' => auth()->user()->id,
                     'user_id' => $user->id,
-                    'user_email' => $user->email
+                    'user_email' => $user->email,
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Correo de restablecimiento de contraseña enviado correctamente',
@@ -244,9 +244,9 @@ class AdminUserController extends Controller
             } else {
                 Log::error('Failed to send password reset email', [
                     'user_id' => $id,
-                    'user_email' => $user->email
+                    'user_email' => $user->email,
                 ]);
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Error al enviar correo de restablecimiento de contraseña',
@@ -419,7 +419,7 @@ class AdminUserController extends Controller
             // Realizar soft delete
             $user->delete();
 
-            Log::info("Usuario eliminado por administrador", [
+            Log::info('Usuario eliminado por administrador', [
                 'deleted_user_id' => $id,
                 'deleted_user_email' => $user->email,
                 'admin_user_id' => auth()->id(),

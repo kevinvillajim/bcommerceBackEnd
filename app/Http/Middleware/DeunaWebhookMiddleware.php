@@ -59,7 +59,7 @@ class DeunaWebhookMiddleware
             $rawBody = $request->getContent();
 
             // Validate signature if provided (mandatory in production)
-            if (!empty($signature) && config('app.env') !== 'local') {
+            if (! empty($signature) && config('app.env') !== 'local') {
                 $webhookSecret = config('deuna.webhook_secret');
                 if (empty($webhookSecret)) {
                     Log::error('Webhook secret not configured', [
@@ -72,13 +72,13 @@ class DeunaWebhookMiddleware
                     ], 500);
                 }
 
-                $expectedSignature = 'sha256=' . hash_hmac('sha256', $rawBody, $webhookSecret);
+                $expectedSignature = 'sha256='.hash_hmac('sha256', $rawBody, $webhookSecret);
 
-                if (!hash_equals($expectedSignature, $signature)) {
+                if (! hash_equals($expectedSignature, $signature)) {
                     Log::error('Invalid webhook signature', [
                         'ip' => $request->ip(),
                         'user_agent' => $request->userAgent(),
-                        'provided_signature' => substr($signature, 0, 16) . '...',
+                        'provided_signature' => substr($signature, 0, 16).'...',
                     ]);
 
                     return response()->json([

@@ -23,10 +23,10 @@ return [
         env('FRONTEND_URL', 'https://comersia.app'),
         // URLs de producción/staging (mismas URLs)
         'https://comersia.app',
-        'https://www.comersia.app', 
+        'https://www.comersia.app',
         // URLs locales para desarrollo
         'http://localhost:3000',
-        'http://localhost:3001', 
+        'http://localhost:3001',
         'http://localhost:3002',
         'http://localhost:3003',
         'http://localhost:3004',

@@ -21,7 +21,7 @@ return new class extends Migration
                 $table->unique(['user_id', 'seller_id', 'order_id', 'product_id', 'type'], 'unique_rating_with_product');
             } catch (\Illuminate\Database\QueryException $e) {
                 // Si el índice ya existe, continúa silenciosamente
-                if (!str_contains($e->getMessage(), 'Duplicate key name') && !str_contains($e->getMessage(), 'already exists')) {
+                if (! str_contains($e->getMessage(), 'Duplicate key name') && ! str_contains($e->getMessage(), 'already exists')) {
                     throw $e;
                 }
             }

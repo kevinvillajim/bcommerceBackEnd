@@ -273,7 +273,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(20, $this->configService->getConfig('general.itemsPerPage'));
         $this->assertTrue($this->configService->getConfig('general.maintenanceMode'));
 
-
         // Test Security configurations with snake_case mapping
         $securityUpdates = [
             'category' => 'security',
@@ -297,7 +296,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(7, $this->configService->getConfig('security.accountLockAttempts'));
         $this->assertEquals(180, $this->configService->getConfig('security.sessionTimeout'));
 
-
         // Test Email configurations
         $emailUpdates = [
             'category' => 'email',
@@ -319,7 +317,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals(465, $this->configService->getConfig('email.smtpPort'));
         $this->assertEquals('New Sender', $this->configService->getConfig('email.senderName'));
         $this->assertFalse($this->configService->getConfig('email.welcomeEmail'));
-
 
         // Test Payment configurations
         $paymentUpdates = [
@@ -385,7 +382,6 @@ class ConfigurationSystemTest extends TestCase
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
 
-
         // Test update volume discount configuration
         $request = new Request([
             'enabled' => false,
@@ -420,7 +416,6 @@ class ConfigurationSystemTest extends TestCase
 
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
-
 
         // Test update ratings configuration
         $request = new Request([
@@ -476,7 +471,6 @@ class ConfigurationSystemTest extends TestCase
 
         $this->assertEquals('success', $data['status']);
         $this->assertArrayHasKey('data', $data);
-
 
         // Test update individual configuration
         $request = new Request([

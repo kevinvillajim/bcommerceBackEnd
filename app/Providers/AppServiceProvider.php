@@ -2,11 +2,11 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -42,7 +42,6 @@ class AppServiceProvider extends ServiceProvider
         AccountingServiceProvider::class, // ✅ Sistema de contabilidad y SRI
     ];
 
-
     /**
      * Register any application services.
      */
@@ -61,10 +60,10 @@ class AppServiceProvider extends ServiceProvider
     {
         // Configure critical rate limiters for security
         $this->configureRateLimiters();
-        
+
         // Register DeUna provider on-demand for payment-related routes only
         $this->registerDeunaProviderOnDemand();
-        
+
         // Configure Ecuador timezone for Carbon globally
         $this->configureEcuadorTimezone();
     }
@@ -117,6 +116,7 @@ class AppServiceProvider extends ServiceProvider
             if (! $this->app->providerIsLoaded(DeunaServiceProvider::class)) {
                 $this->app->register(DeunaServiceProvider::class);
             }
+
             return;
         }
 
@@ -153,13 +153,13 @@ class AppServiceProvider extends ServiceProvider
     {
         // Set Ecuador timezone as default for all Carbon instances
         $timezone = config('app.timezone', 'America/Guayaquil');
-        
+
         // Configure PHP's default timezone
         date_default_timezone_set($timezone);
-        
+
         // Configure Carbon's default timezone for new instances
         Carbon::setLocale(config('app.locale', 'es'));
-        
+
         // Log timezone configuration for verification (commented to avoid log spam)
         // if (config('app.debug')) {
         //     $now = Carbon::now();

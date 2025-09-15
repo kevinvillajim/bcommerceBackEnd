@@ -4,7 +4,6 @@ namespace Tests\Unit\UseCases\Checkout;
 
 use App\Domain\Entities\CartItemEntity;
 use App\Domain\Entities\OrderEntity;
-use App\Domain\Entities\ProductEntity;
 use App\Domain\Entities\SellerOrderEntity;
 use App\Domain\Entities\ShoppingCartEntity;
 use App\Domain\Interfaces\PaymentGatewayInterface;
@@ -14,10 +13,10 @@ use App\Domain\Repositories\SellerOrderRepositoryInterface;
 use App\Domain\Repositories\ShoppingCartRepositoryInterface;
 use App\Domain\Services\PricingCalculatorService;
 use App\Services\ConfigurationService;
+use App\Services\PriceVerificationService;
 use App\UseCases\Cart\ApplyCartDiscountCodeUseCase;
 use App\UseCases\Checkout\ProcessCheckoutUseCase;
 use App\UseCases\Order\CreateOrderUseCase;
-use Illuminate\Support\Facades\DB;
 use Mockery;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -25,14 +24,25 @@ use Tests\TestCase;
 class ProcessCheckoutUseCaseTest extends TestCase
 {
     protected $cartRepository;
+
     protected $orderRepository;
+
     protected $productRepository;
+
     protected $sellerOrderRepository;
+
     protected $paymentGateway;
+
     protected $createOrderUseCase;
+
     protected $configService;
+
     protected $applyCartDiscountCodeUseCase;
+
     protected $pricingService;
+
+    protected $priceVerificationService;
+
     protected $useCase;
 
     protected function setUp(): void
@@ -49,6 +59,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
         $this->configService = Mockery::mock(ConfigurationService::class);
         $this->applyCartDiscountCodeUseCase = Mockery::mock(ApplyCartDiscountCodeUseCase::class);
         $this->pricingService = Mockery::mock(PricingCalculatorService::class);
+        $this->priceVerificationService = Mockery::mock(PriceVerificationService::class);
 
         // Crear instancia del use case con todas las dependencias
         $this->useCase = new ProcessCheckoutUseCase(
@@ -60,7 +71,8 @@ class ProcessCheckoutUseCaseTest extends TestCase
             $this->createOrderUseCase,
             $this->configService,
             $this->applyCartDiscountCodeUseCase,
-            $this->pricingService
+            $this->pricingService,
+            $this->priceVerificationService
         );
     }
 
@@ -117,27 +129,27 @@ class ProcessCheckoutUseCaseTest extends TestCase
         \App\Models\User::factory()->create([
             'id' => 1,
             'name' => 'Test Buyer',
-            'email' => 'buyer@test.com'
+            'email' => 'buyer@test.com',
         ]);
 
         // Crear un user y seller para los productos
         $sellerUser = \App\Models\User::factory()->create([
             'id' => 2,
             'name' => 'Test Seller',
-            'email' => 'seller@test.com'
+            'email' => 'seller@test.com',
         ]);
 
         \App\Models\Seller::factory()->create([
             'id' => 1,
             'user_id' => $sellerUser->id,
             'store_name' => 'Test Store',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // Crear categoría para los productos
         \App\Models\Category::factory()->create([
             'id' => 1,
-            'name' => 'Test Category'
+            'name' => 'Test Category',
         ]);
 
         // Crear productos reales en la base de datos para stock validation
@@ -150,19 +162,19 @@ class ProcessCheckoutUseCaseTest extends TestCase
             'seller_id' => 1,
             'category_id' => 1,
             'status' => 'active',
-            'published' => true
+            'published' => true,
         ]);
 
         \App\Models\Product::factory()->create([
             'id' => 200,
-            'name' => 'Producto 2', 
+            'name' => 'Producto 2',
             'stock' => 5,
             'price' => 75.00,
             'user_id' => 2, // Seller user
             'seller_id' => 1,
             'category_id' => 1,
             'status' => 'active',
-            'published' => true
+            'published' => true,
         ]);
 
         // Ya no necesitamos mocks del product repository porque la validación
@@ -194,7 +206,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
                     'final_price' => 50,
                     'seller_discount_amount' => 0,
                     'volume_discount_amount' => 0,
-                    'seller_id' => 1
+                    'seller_id' => 1,
                 ],
                 [
                     'id' => 2,
@@ -207,9 +219,9 @@ class ProcessCheckoutUseCaseTest extends TestCase
                     'final_price' => 75,
                     'seller_discount_amount' => 0,
                     'volume_discount_amount' => 0,
-                    'seller_id' => 1
+                    'seller_id' => 1,
                 ],
-            ]
+            ],
         ];
 
         $this->pricingService->shouldReceive('calculateCartTotals')
@@ -235,7 +247,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
             ->andReturn([
                 'success' => true,
                 'transaction_id' => 'txn_123456',
-                'message' => 'Payment successful'
+                'message' => 'Payment successful',
             ]);
 
         // Crear una orden real en la base de datos
@@ -244,7 +256,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
             'user_id' => $userId,
             'order_number' => 'ORD-2024-001',
             'status' => 'pending',
-            'payment_status' => 'pending'
+            'payment_status' => 'pending',
         ]);
 
         // Mock para la creación de la orden
@@ -261,7 +273,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
             ->with($orderId, Mockery::subset([
                 'payment_status' => 'completed',
                 'payment_method' => 'credit_card',
-                'status' => 'processing'
+                'status' => 'processing',
             ]))
             ->once();
 
@@ -270,7 +282,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
         // Mock para crear seller order
         $sellerOrder = Mockery::mock(SellerOrderEntity::class);
         $sellerOrder->shouldReceive('getId')->andReturn(1);
-        
+
         $this->sellerOrderRepository->shouldReceive('create')
             ->once()
             ->andReturn($sellerOrder);
@@ -286,8 +298,13 @@ class ProcessCheckoutUseCaseTest extends TestCase
             ->once()
             ->andReturn($order);
 
+        // Mock para verificación de precios
+        $this->priceVerificationService->shouldReceive('verifyItemPrices')
+            ->andReturn(true);
+
         // Ejecutar el use case
-        $result = $this->useCase->execute($userId, $paymentData, $shippingData);
+        $billingData = $shippingData; // Para tests, billing = shipping
+        $result = $this->useCase->execute($userId, $paymentData, $shippingData, $billingData);
 
         // Verificar el resultado
         $this->assertIsArray($result);
@@ -307,11 +324,11 @@ class ProcessCheckoutUseCaseTest extends TestCase
         $paymentData = ['method' => 'credit_card'];
         $shippingData = [
             'address' => 'Test Address',
-            'city' => 'Test City', 
+            'city' => 'Test City',
             'state' => 'Test State',
             'country' => 'US',
             'postal_code' => '12345',
-            'phone' => 'No phone provided'
+            'phone' => 'No phone provided',
         ];
 
         // Mock para carrito vacío
@@ -323,7 +340,8 @@ class ProcessCheckoutUseCaseTest extends TestCase
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('No hay items para procesar');
 
-        $this->useCase->execute($userId, $paymentData, $shippingData);
+        $billingData = $shippingData; // Para tests, billing = shipping
+        $this->useCase->execute($userId, $paymentData, $shippingData, $billingData);
     }
 
     #[Test]
@@ -342,35 +360,35 @@ class ProcessCheckoutUseCaseTest extends TestCase
         $shippingData = [
             'address' => 'Test Address',
             'city' => 'Test City',
-            'state' => 'Test State', 
+            'state' => 'Test State',
             'country' => 'US',
             'postal_code' => '12345',
-            'phone' => 'No phone provided'
+            'phone' => 'No phone provided',
         ];
 
         // Crear datos de prueba similares al test principal
         \App\Models\User::factory()->create([
             'id' => 1,
             'name' => 'Test Buyer',
-            'email' => 'buyer@test.com'
+            'email' => 'buyer@test.com',
         ]);
 
         $sellerUser = \App\Models\User::factory()->create([
             'id' => 2,
             'name' => 'Test Seller',
-            'email' => 'seller@test.com'
+            'email' => 'seller@test.com',
         ]);
 
         \App\Models\Seller::factory()->create([
             'id' => 1,
             'user_id' => $sellerUser->id,
             'store_name' => 'Test Store',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         \App\Models\Category::factory()->create([
             'id' => 1,
-            'name' => 'Test Category'
+            'name' => 'Test Category',
         ]);
 
         \App\Models\Product::factory()->create([
@@ -382,7 +400,7 @@ class ProcessCheckoutUseCaseTest extends TestCase
             'seller_id' => 1,
             'category_id' => 1,
             'status' => 'active',
-            'published' => true
+            'published' => true,
         ]);
 
         // Simular carrito con items
@@ -420,9 +438,9 @@ class ProcessCheckoutUseCaseTest extends TestCase
                     'final_price' => 50,
                     'seller_discount_amount' => 0,
                     'volume_discount_amount' => 0,
-                    'seller_id' => 1
-                ]
-            ]
+                    'seller_id' => 1,
+                ],
+            ],
         ];
 
         $this->pricingService->shouldReceive('calculateCartTotals')
@@ -435,14 +453,14 @@ class ProcessCheckoutUseCaseTest extends TestCase
             'user_id' => $userId,
             'order_number' => 'ORD-2024-FAIL',
             'status' => 'pending',
-            'payment_status' => 'pending'
+            'payment_status' => 'pending',
         ]);
 
         // Mock para CreateOrderUseCase - sí se ejecuta pero luego falla el pago
         $order = Mockery::mock(OrderEntity::class);
         $order->shouldReceive('getId')->andReturn(100);
         $order->shouldReceive('getOrderNumber')->andReturn('ORD-2024-FAIL');
-        
+
         $this->createOrderUseCase->shouldReceive('execute')
             ->once()
             ->andReturn($order);
@@ -465,12 +483,13 @@ class ProcessCheckoutUseCaseTest extends TestCase
             ->once()
             ->andReturn([
                 'success' => false,
-                'message' => 'Payment declined'
+                'message' => 'Payment declined',
             ]);
 
         $this->expectException(\Exception::class);
         $this->expectExceptionMessage('Error al procesar el pago: Payment declined');
 
-        $this->useCase->execute($userId, $paymentData, $shippingData);
+        $billingData = $shippingData; // Para tests, billing = shipping
+        $this->useCase->execute($userId, $paymentData, $shippingData, $billingData);
     }
 }

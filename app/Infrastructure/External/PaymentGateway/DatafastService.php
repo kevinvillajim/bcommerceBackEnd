@@ -18,14 +18,14 @@ class DatafastService implements PaymentGatewayInterface
     private bool $isProduction;
 
     private bool $usePhase2; // Control para cambiar entre Fase 1 y Fase 2
-    
+
     private ConfigurationService $configService;
 
     public function __construct(ConfigurationService $configService)
     {
         $this->configService = $configService;
         $this->isProduction = config('app.env') === 'production';
-        $this->usePhase2 = config('services.datafast.use_phase2', false); // Por defecto Fase 1
+        $this->usePhase2 = config('services.datafast.use_phase2', true); // Por defecto Fase 2
 
         if ($this->isProduction) {
             // Configuración de producción
@@ -116,13 +116,13 @@ class DatafastService implements PaymentGatewayInterface
                 // Construir la URL del widget con el checkoutId
                 $widgetBaseUrl = rtrim($this->baseUrl, '/').'/v1/paymentWidgets.js';
                 $widgetUrl = $widgetBaseUrl.'?checkoutId='.$responseData['id'];
-                
+
                 Log::info('✅ Checkout creado con éxito', [
                     'checkout_id' => $responseData['id'],
                     'widget_url' => $widgetUrl,
-                    'base_url' => $this->baseUrl
+                    'base_url' => $this->baseUrl,
                 ]);
-                
+
                 return [
                     'success' => true,
                     'checkout_id' => $responseData['id'],
@@ -199,14 +199,14 @@ class DatafastService implements PaymentGatewayInterface
      */
     private function buildPhase2Data(array $orderData): array
     {
-        // Validar datos requeridos para Fase 2
-        $this->validatePhase2Data($orderData);
+        // Validar estructura básica requerida para Fase 2
+        $this->validatePhase2Structure($orderData);
 
         // Calcular impuestos dinámicamente (IVA Ecuador)
         $amount = $orderData['amount'];
         // ✅ COMPLETAMENTE DINÁMICO: Sin fallback hardcoded en gateway de pago
         $taxRatePercentage = $this->configService->getConfig('payment.taxRate');
-        
+
         if ($taxRatePercentage === null) {
             throw new \Exception('Tax rate no configurado en BD - Requerido para procesamiento de pagos');
         }
@@ -297,6 +297,9 @@ class DatafastService implements PaymentGatewayInterface
             $data['cart.items[0].quantity'] = 1;
         }
 
+        // Validar que los datos finales construidos sean correctos
+        $this->validateBuiltPhase2Data($data);
+
         Log::info('Datafast Fase 2: Datos completos construidos', [
             'amount' => $data['amount'],
             'customer_name' => $data['customer.givenName'].' '.$data['customer.surname'],
@@ -308,9 +311,9 @@ class DatafastService implements PaymentGatewayInterface
     }
 
     /**
-     * Validar datos requeridos para Fase 2
+     * Validar estructura básica requerida para Fase 2 (sin validar contenido)
      */
-    private function validatePhase2Data(array $orderData): void
+    private function validatePhase2Structure(array $orderData): void
     {
         $requiredFields = ['customer', 'shipping', 'transaction_id'];
 
@@ -320,10 +323,29 @@ class DatafastService implements PaymentGatewayInterface
             }
         }
 
-        $customerFields = ['given_name', 'surname', 'email'];
-        foreach ($customerFields as $field) {
-            if (empty($orderData['customer'][$field])) {
-                throw new \Exception("Campo de cliente requerido faltante: {$field}");
+        // Solo validar que customer sea un array, no su contenido
+        if (!is_array($orderData['customer'])) {
+            throw new \Exception("El campo customer debe ser un array");
+        }
+    }
+
+    /**
+     * Validar datos finales construidos para Fase 2 (con fallbacks aplicados)
+     */
+    private function validateBuiltPhase2Data(array $data): void
+    {
+        $requiredDataFields = [
+            'customer.givenName',
+            'customer.surname',
+            'customer.email',
+            'customer.identificationDocId',
+            'entityId',
+            'amount'
+        ];
+
+        foreach ($requiredDataFields as $field) {
+            if (empty($data[$field])) {
+                throw new \Exception("Campo de datos construidos faltante: {$field}");
             }
         }
     }

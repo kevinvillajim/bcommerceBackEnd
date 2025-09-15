@@ -36,9 +36,9 @@ class ProcessCheckoutUseCase
     private ConfigurationService $configService;
 
     private ApplyCartDiscountCodeUseCase $applyCartDiscountCodeUseCase;
-    
+
     private PricingCalculatorService $pricingService;
-    
+
     private PriceVerificationService $priceVerificationService;
 
     public function __construct(
@@ -68,19 +68,25 @@ class ProcessCheckoutUseCase
     /**
      * 🧮 CORREGIDO: Procesa el checkout usando PricingCalculatorService centralizado
      */
-    public function execute(int $userId, array $paymentData, array $shippingData, array $items = [], ?int $sellerId = null, ?string $discountCode = null, ?array $calculatedTotals = null): array
+    public function execute(int $userId, array $paymentData, array $shippingData, array $billingData, array $items = [], ?int $sellerId = null, ?string $discountCode = null, ?array $calculatedTotals = null): array
     {
         // 🔍 LOGGING TEMPORAL: Capturar datos de entrada
-        Log::info("🔍 ProcessCheckoutUseCase.execute() - DATOS DE ENTRADA", [
+        Log::info('🔍 ProcessCheckoutUseCase.execute() - DATOS DE ENTRADA', [
             'userId' => $userId,
             'shippingData_full' => $shippingData,
             'shippingData_has_identification' => isset($shippingData['identification']),
             'identification_value' => $shippingData['identification'] ?? 'NO_SET',
             'shippingData_keys' => array_keys($shippingData),
-            'paymentData_keys' => array_keys($paymentData)
+            'paymentData_keys' => array_keys($paymentData),
+            // 🔍 NUEVOS LOGS BILLING DATA
+            'billingData_full' => $billingData,
+            'billingData_has_identification' => isset($billingData['identification']),
+            'billing_identification_value' => $billingData['identification'] ?? 'NO_SET',
+            'billingData_keys' => array_keys($billingData),
+            'billing_equals_shipping' => $billingData === $shippingData,
         ]);
 
-        return DB::transaction(function () use ($userId, $paymentData, $shippingData, $items, $sellerId, $discountCode, $calculatedTotals) {
+        return DB::transaction(function () use ($userId, $paymentData, $shippingData, $billingData, $items, $sellerId, $discountCode, $calculatedTotals) {
             try {
                 // ✅ CRITICAL FIX: Skip isolation level change to avoid transaction conflicts
                 // Solo usar SERIALIZABLE en producción si es estrictamente necesario
@@ -89,17 +95,17 @@ class ProcessCheckoutUseCase
                         DB::statement('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
                         Log::info('🔒 CRITICAL: Transaction isolation level set to SERIALIZABLE (production)');
                     } catch (\Exception $e) {
-                        Log::warning('⚠️ Could not set SERIALIZABLE isolation level: ' . $e->getMessage());
+                        Log::warning('⚠️ Could not set SERIALIZABLE isolation level: '.$e->getMessage());
                     }
                 } else {
                     Log::info('🔒 CRITICAL: Skipping isolation level change (development/testing)');
                 }
-                
+
                 Log::info('🔒 CRITICAL: Transaction started with SERIALIZABLE isolation level', [
                     'user_id' => $userId,
                     'items_count' => count($items),
                     'transaction_id' => DB::transactionLevel(),
-                    'timestamp' => microtime(true)
+                    'timestamp' => microtime(true),
                 ]);
                 // 🔧 NUEVO: Extraer seller_id del primer producto si no se proporciona
                 if ($sellerId === null && ! empty($items)) {
@@ -128,10 +134,10 @@ class ProcessCheckoutUseCase
                 if (empty($items)) {
                     // Obtener items del carrito si no se proporcionaron
                     $cart = $this->cartRepository->findByUserId($userId);
-                    if (!$cart || count($cart->getItems()) === 0) {
+                    if (! $cart || count($cart->getItems()) === 0) {
                         throw new \Exception('No hay items para procesar');
                     }
-                    
+
                     // Convertir cart items al formato estándar
                     $cartItems = [];
                     foreach ($cart->getItems() as $item) {
@@ -139,12 +145,12 @@ class ProcessCheckoutUseCase
                             'product_id' => $item->getProductId(),
                             'quantity' => $item->getQuantity(),
                             'price' => $item->getPrice(),      // ✅ INCLUIR precio para verificación
-                            'subtotal' => $item->getSubtotal() // ✅ INCLUIR subtotal 
+                            'subtotal' => $item->getSubtotal(), // ✅ INCLUIR subtotal
                         ];
                     }
                     $items = $cartItems;
                 }
-                
+
                 // Preparar items para el servicio de pricing centralizado
                 $pricingItems = [];
                 foreach ($items as $item) {
@@ -153,20 +159,20 @@ class ProcessCheckoutUseCase
                         'quantity' => $item['quantity'],
                     ];
                 }
-                
+
                 Log::info('🧮 Calculando totales con PricingCalculatorService centralizado', [
                     'items_count' => count($pricingItems),
                     'user_id' => $userId,
                     'discount_code' => $discountCode,
                 ]);
-                
+
                 // Usar servicio centralizado para calcular totales
                 $pricingResult = $this->pricingService->calculateCartTotals(
                     $pricingItems,
                     $userId,
                     $discountCode
                 );
-                
+
                 // Convertir resultado a formato compatible
                 $totals = [
                     'subtotal_original' => $pricingResult['subtotal_original'],
@@ -183,10 +189,10 @@ class ProcessCheckoutUseCase
                     'final_total' => $pricingResult['final_total'],
                     'feedback_discount_amount' => $pricingResult['coupon_discount'],
                 ];
-                
+
                 // Usar items procesados del servicio centralizado
                 $processedItems = $pricingResult['processed_items'];
-                
+
                 Log::info('✅ Totales calculados con PricingCalculatorService centralizado', [
                     'subtotal_original' => $totals['subtotal_original'],
                     'final_total' => $totals['final_total'],
@@ -210,20 +216,20 @@ class ProcessCheckoutUseCase
                 ]);
 
                 // 4. 🔒 SECURITY: Verificar integridad de precios (anti-tampering) - INCLUYE TODOS LOS DESCUENTOS
-                if (!empty($paymentData['skip_price_verification'])) {
+                if (! empty($paymentData['skip_price_verification'])) {
                     Log::info('🔓 SECURITY: Saltando verificación de precios (método de pago confiable)', [
                         'payment_method' => $paymentData['method'] ?? 'unknown',
-                        'user_id' => $userId
+                        'user_id' => $userId,
                     ]);
                 } else {
-                    if (!$this->priceVerificationService->verifyItemPrices($items, $userId, $discountCode)) {
+                    if (! $this->priceVerificationService->verifyItemPrices($items, $userId, $discountCode)) {
                         throw new \Exception('Security: Price tampering detected. Transaction blocked.');
                     }
                 }
-                
+
                 // Verificar totales calculados si se proporcionan
                 if ($calculatedTotals) {
-                    if (!$this->priceVerificationService->verifyCalculatedTotals($processedItems, $calculatedTotals, $userId, $discountCode)) {
+                    if (! $this->priceVerificationService->verifyCalculatedTotals($processedItems, $calculatedTotals, $userId, $discountCode)) {
                         throw new \Exception('Security: Total tampering detected. Transaction blocked.');
                     }
                 }
@@ -241,6 +247,7 @@ class ProcessCheckoutUseCase
                     'total_discount_savings' => $totals['total_discounts'],
                     'volume_discounts_applied' => $totals['volume_discounts'] > 0,
                     'shipping_data' => $shippingData,
+                    'billing_data' => $billingData,
                     'seller_id' => $sellerId,
                     'items' => $items, // ✅ CORREGIDO: Pasar los items reales, no array vacío
                     // ✅ CORREGIDO: Información detallada de pricing
@@ -265,16 +272,25 @@ class ProcessCheckoutUseCase
                 ];
 
                 // 🔍 LOGGING TEMPORAL: Verificar shipping_data en orderData
-                Log::info("🔍 ProcessCheckoutUseCase - SHIPPING_DATA EN ORDER_DATA", [
+                Log::info('🔍 ProcessCheckoutUseCase - SHIPPING_DATA EN ORDER_DATA', [
                     'orderData_shipping_data' => $shippingData,
                     'shipping_identification' => $shippingData['identification'] ?? 'NO_SET',
                     'shipping_data_count' => count($shippingData),
-                    'is_array' => is_array($shippingData)
+                    'is_array' => is_array($shippingData),
                 ]);
 
                 Log::info('🏗️ Creando orden principal con descuentos por volumen');
                 $mainOrder = $this->createOrderUseCase->execute($orderData);
                 $orderId = $mainOrder->getId();
+
+                // 💾 LOG: Confirmar datos almacenados correctamente
+                Log::info('💾 ORDER: Datos almacenados', [
+                    'order_id' => $orderId,
+                    'shipping_data_keys' => array_keys($shippingData),
+                    'billing_data_keys' => array_keys($billingData),
+                    'has_billing_data' => !empty($billingData),
+                    'billing_equals_shipping' => $billingData === $shippingData
+                ]);
 
                 if (! $orderId || ! is_numeric($orderId)) {
                     throw new \Exception('Error al crear la orden: ID de orden inválido');
@@ -306,17 +322,35 @@ class ProcessCheckoutUseCase
                     'payment_data_keys' => array_keys($paymentData),
                 ]);
 
+                // ✅ SEGURIDAD: Validación estricta de campos obligatorios - NO USAR FALLBACKS
+                $requiredFields = ['name', 'identification', 'phone', 'street', 'city', 'state', 'country'];
+                foreach ($requiredFields as $field) {
+                    if (empty($shippingData[$field])) {
+                        throw new \Exception("SECURITY: Campo obligatorio faltante en datos de envío: {$field}. Transacción bloqueada.");
+                    }
+                }
+
+                // Separar nombre completo en partes
+                $nameParts = explode(' ', trim($shippingData['name']), 2);
+                $given_name = $nameParts[0] ?? '';
+                $surname = $nameParts[1] ?? '';
+
+                // Validar que tengamos both nombre y apellido
+                if (empty($given_name) || empty($surname)) {
+                    throw new \Exception('SECURITY: Los datos de envío deben incluir nombre y apellido separados por espacio. Transacción bloqueada.');
+                }
+
                 $paymentDataWithCustomer = $paymentData;
                 $paymentDataWithCustomer['customer'] = [
-                    'given_name' => $shippingData['first_name'] ?? 'Cliente',
-                    'surname' => $shippingData['last_name'] ?? 'De Prueba', 
-                    'email' => $shippingData['email'] ?? 'test@example.com',
-                    'phone' => $shippingData['phone'] ?? '0999999999',
-                    'doc_id' => '1234567890', // Valor por defecto
+                    'given_name' => $given_name,
+                    'surname' => $surname,
+                    'email' => $shippingData['email'] ?? 'test@example.com', // Email puede tener fallback temporal
+                    'phone' => $shippingData['phone'], // ✅ ESTRICTO: Sin fallback
+                    'doc_id' => $shippingData['identification'], // ✅ ESTRICTO: Sin fallback
                 ];
                 $paymentDataWithCustomer['shipping'] = $shippingData;
                 $paymentDataWithCustomer['billing'] = $shippingData; // Usar mismos datos para billing
-                
+
                 Log::info('🔍 DEBUGING customer data después del mapeo', [
                     'customer_data' => $paymentDataWithCustomer['customer'],
                     'payment_method' => $paymentDataWithCustomer['method'] ?? 'unknown',
@@ -340,20 +374,20 @@ class ProcessCheckoutUseCase
                 // ✅ PROTECCIÓN ANTI-DUPLICADOS: Verificar si el evento ya se disparó para este transaction_id
                 $transactionId = $paymentData['transaction_id'] ?? $paymentData['payment_id'] ?? 'unknown';
                 $eventCacheKey = "order_created_event_{$transactionId}";
-                
+
                 if (Cache::get($eventCacheKey)) {
                     Log::warning('🚫 EVENTO DUPLICADO DETECTADO Y BLOQUEADO', [
                         'transaction_id' => $transactionId,
                         'order_id' => $orderId,
                         'cache_key' => $eventCacheKey,
-                        'reason' => 'ProcessCheckoutUseCase transaction retry'
+                        'reason' => 'ProcessCheckoutUseCase transaction retry',
                     ]);
-                    
+
                     // No disparar el evento duplicado, pero continuar con el resto del proceso
                 } else {
                     // Marcar que el evento ya se disparó para este transaction_id
                     Cache::put($eventCacheKey, true, 300); // 5 minutos de caché
-                    
+
                     Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated CON payment_status', [
                         'order_id' => $orderId,
                         'user_id' => $userId,
@@ -365,16 +399,16 @@ class ProcessCheckoutUseCase
                     ]);
 
                     event(new OrderCreated(
-                    $orderId,
-                    $userId,
-                    $sellerId,
-                    [
-                        'order_number' => $mainOrder->getOrderNumber(),
-                        'total' => $totals['final_total'],
-                        'items' => $processedItems,
-                        'checkout_source' => 'ProcessCheckoutUseCase',
-                        'payment_status' => 'completed', // ✅ Ahora el evento incluye payment_status
-                    ]
+                        $orderId,
+                        $userId,
+                        $sellerId,
+                        [
+                            'order_number' => $mainOrder->getOrderNumber(),
+                            'total' => $totals['final_total'],
+                            'items' => $processedItems,
+                            'checkout_source' => 'ProcessCheckoutUseCase',
+                            'payment_status' => 'completed', // ✅ Ahora el evento incluye payment_status
+                        ]
                     ));
 
                     Log::info('✅ Evento OrderCreated disparado DESPUÉS de updatePaymentInfo', [
@@ -708,10 +742,10 @@ class ProcessCheckoutUseCase
                 ->lockForUpdate()
                 ->first();
 
-            if (!$productModel) {
+            if (! $productModel) {
                 Log::critical('🚨 CRITICAL: Product not found during stock validation', [
                     'product_id' => $item['product_id'],
-                    'item' => $item
+                    'item' => $item,
                 ]);
                 throw new \Exception("CRITICAL: Producto {$item['product_id']} no encontrado durante validación de stock");
             }
@@ -723,7 +757,7 @@ class ProcessCheckoutUseCase
                     'product_name' => $productModel->name,
                     'available_stock' => $productModel->stock,
                     'requested_quantity' => $item['quantity'],
-                    'user_action' => 'TRANSACTION_ROLLBACK_REQUIRED'
+                    'user_action' => 'TRANSACTION_ROLLBACK_REQUIRED',
                 ]);
                 throw new \Exception("CRITICAL: Stock insuficiente para {$productModel->name}. Disponible: {$productModel->stock}, Solicitado: {$item['quantity']}");
             }
@@ -733,7 +767,7 @@ class ProcessCheckoutUseCase
                 'product_id' => $item['product_id'],
                 'product_name' => $productModel->name,
                 'available_stock' => $productModel->stock,
-                'requested_quantity' => $item['quantity']
+                'requested_quantity' => $item['quantity'],
             ]);
         }
     }
@@ -815,18 +849,18 @@ class ProcessCheckoutUseCase
                 'shipping_cost' => $shippingCostPerSeller,
                 'items_count' => count($formattedItems),
             ]);
-            
+
             Log::info('🔍 DEBUGGING: Punto de entrada a seller_order_id assignment', [
                 'order_id' => $orderId,
                 'seller_id' => $sellerId,
                 'payment_method' => $paymentData['method'] ?? 'unknown',
-                'items_for_seller' => count($formattedItems)
+                'items_for_seller' => count($formattedItems),
             ]);
 
             // ✅ Obtener payment info de la orden principal
             $mainOrderPaymentStatus = 'completed'; // Pago procesado cuando llega aquí
             $mainOrderPaymentMethod = $paymentData['method'] ?? 'datafast'; // Usar método real
-            
+
             $sellerOrderEntity = SellerOrderEntity::create(
                 $orderId,
                 $sellerId,
@@ -848,40 +882,40 @@ class ProcessCheckoutUseCase
             );
 
             $sellerOrder = $this->sellerOrderRepository->create($sellerOrderEntity);
-            
+
             // 🚨 CRITICAL FIX: Updates atómicos con locks para evitar race conditions
             Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Antes de actualizar Order', [
                 'order_id' => $orderId,
                 'seller_id' => $sellerId,
                 'seller_order_id_to_assign' => $sellerOrder->getId(),
-                'payment_method' => $paymentData['method'] ?? 'unknown'
+                'payment_method' => $paymentData['method'] ?? 'unknown',
             ]);
-            
+
             $orderModel = \App\Models\Order::lockForUpdate()->find($orderId);
-            if (!$orderModel) {
+            if (! $orderModel) {
                 Log::error('🚨 CRITICAL ERROR: Order not found for seller_order_id update', [
                     'order_id' => $orderId,
                     'seller_id' => $sellerId,
-                    'seller_order_id' => $sellerOrder->getId()
+                    'seller_order_id' => $sellerOrder->getId(),
                 ]);
                 throw new \Exception("CRITICAL: Order {$orderId} not found for atomic update");
             }
-            
+
             Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Order encontrada, actualizando', [
                 'order_id' => $orderId,
                 'current_seller_order_id' => $orderModel->seller_order_id,
                 'new_seller_order_id' => $sellerOrder->getId(),
-                'payment_method' => $orderModel->payment_method
+                'payment_method' => $orderModel->payment_method,
             ]);
-            
+
             $orderModel->seller_order_id = $sellerOrder->getId();
             $saveResult = $orderModel->save();
-            
+
             Log::info('🔍 DEBUGGING SELLER_ORDER_ID: Resultado del save()', [
                 'order_id' => $orderId,
                 'save_result' => $saveResult,
                 'final_seller_order_id' => $orderModel->seller_order_id,
-                'payment_method' => $orderModel->payment_method
+                'payment_method' => $orderModel->payment_method,
             ]);
 
             // ✅ CRITICAL FIX: Update atómico de OrderItems para este seller
@@ -895,7 +929,7 @@ class ProcessCheckoutUseCase
             $totalItemsCount = \App\Models\OrderItem::where('order_id', $orderId)
                 ->where('seller_id', $sellerId)
                 ->count();
-                
+
             if ($updatedItemsCount === 0 && $totalItemsCount > 0) {
                 Log::warning('🚨 CRITICAL WARNING: No OrderItems were updated', [
                     'order_id' => $orderId,
@@ -903,7 +937,7 @@ class ProcessCheckoutUseCase
                     'seller_order_id' => $sellerOrder->getId(),
                     'total_items' => $totalItemsCount,
                     'expected_updates' => $totalItemsCount,
-                    'actual_updates' => $updatedItemsCount
+                    'actual_updates' => $updatedItemsCount,
                 ]);
             } else {
                 Log::info('✅ OrderItems updated successfully', [
@@ -911,10 +945,10 @@ class ProcessCheckoutUseCase
                     'seller_id' => $sellerId,
                     'seller_order_id' => $sellerOrder->getId(),
                     'total_items' => $totalItemsCount,
-                    'updated_items' => $updatedItemsCount
+                    'updated_items' => $updatedItemsCount,
                 ]);
             }
-            
+
             // ✅ CRÍTICO: Crear registro de Shipping para el SellerOrder
             $this->createShippingRecord($sellerOrder->getId(), $mainOrder);
 
@@ -923,9 +957,9 @@ class ProcessCheckoutUseCase
                 'seller_order_id' => $sellerOrder->getId(),
                 'seller_id' => $sellerId,
                 'order_items_updated' => $updatedItemsCount,
-                'total_items_for_seller' => $totalItemsCount
+                'total_items_for_seller' => $totalItemsCount,
             ]);
-            
+
             $sellerOrders[] = $sellerOrder;
         }
 
@@ -944,10 +978,10 @@ class ProcessCheckoutUseCase
                     ->lockForUpdate()
                     ->first();
 
-                if (!$productModel) {
+                if (! $productModel) {
                     Log::critical('🚨 CRITICAL: Product disappeared during stock update', [
                         'product_id' => $item['product_id'],
-                        'item' => $item
+                        'item' => $item,
                     ]);
                     throw new \Exception("CRITICAL: Producto {$item['product_id']} no encontrado durante actualización de stock");
                 }
@@ -958,7 +992,7 @@ class ProcessCheckoutUseCase
                         'product_id' => $item['product_id'],
                         'current_stock' => $productModel->stock,
                         'requested_quantity' => $item['quantity'],
-                        'product_name' => $productModel->name
+                        'product_name' => $productModel->name,
                     ]);
                     throw new \Exception("CRITICAL: Stock concurrente insuficiente para {$productModel->name}");
                 }
@@ -973,14 +1007,14 @@ class ProcessCheckoutUseCase
                     'product_name' => $productModel->name,
                     'previous_stock' => $productModel->stock + $item['quantity'],
                     'quantity_sold' => $item['quantity'],
-                    'new_stock' => $newStock
+                    'new_stock' => $newStock,
                 ]);
 
             } catch (\Exception $e) {
                 Log::critical('🚨 CRITICAL: Stock update failed', [
                     'product_id' => $item['product_id'],
                     'error' => $e->getMessage(),
-                    'item' => $item
+                    'item' => $item,
                 ]);
                 throw $e; // Re-throw to trigger transaction rollback
             }
@@ -1041,25 +1075,26 @@ class ProcessCheckoutUseCase
             if ($existingShipping) {
                 Log::info('Shipping record already exists for seller order', [
                     'seller_order_id' => $sellerOrderId,
-                    'shipping_id' => $existingShipping->id
+                    'shipping_id' => $existingShipping->id,
                 ]);
+
                 return;
             }
 
             // Generar número de tracking
             $trackingNumber = \App\Models\Shipping::generateTrackingNumber();
-            
+
             // Obtener datos de envío de la orden
             $shippingData = $order->getShippingData();
             $currentLocation = null;
-            
+
             if ($shippingData && is_array($shippingData)) {
                 $currentLocation = [
                     'address' => $shippingData['address'] ?? '',
                     'city' => $shippingData['city'] ?? '',
                     'state' => $shippingData['state'] ?? '',
                     'country' => $shippingData['country'] ?? 'Ecuador',
-                    'postal_code' => $shippingData['postal_code'] ?? ''
+                    'postal_code' => $shippingData['postal_code'] ?? '',
                 ];
             }
 
@@ -1071,7 +1106,7 @@ class ProcessCheckoutUseCase
                 'current_location' => $currentLocation,
                 'estimated_delivery' => now()->addDays(3), // 3 días por defecto
                 'carrier_name' => 'Courier Local',
-                'last_updated' => now()
+                'last_updated' => now(),
             ]);
 
             // Crear evento inicial en el historial
@@ -1086,14 +1121,14 @@ class ProcessCheckoutUseCase
                 'seller_order_id' => $sellerOrderId,
                 'shipping_id' => $shipping->id,
                 'tracking_number' => $trackingNumber,
-                'status' => 'processing'
+                'status' => 'processing',
             ]);
 
         } catch (\Exception $e) {
             Log::error('Error creating shipping record for seller order', [
                 'seller_order_id' => $sellerOrderId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
             // No lanzar excepción para no fallar el proceso principal
         }

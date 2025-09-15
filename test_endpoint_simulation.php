@@ -1,12 +1,12 @@
 <?php
 
 echo "🧪 Testing Admin Email Endpoint Configuration\n";
-echo "=" . str_repeat("=", 50) . "\n";
+echo '='.str_repeat('=', 50)."\n";
 
 // Test 1: Verify route file structure
 echo "📋 Test 1: Verifying route configuration...\n";
 
-$routeFile = __DIR__ . '/routes/api.php';
+$routeFile = __DIR__.'/routes/api.php';
 $routeContent = file_get_contents($routeFile);
 
 // Check if admin middleware group exists
@@ -24,7 +24,7 @@ if ($adminStart !== false) {
     $adminGroupStart = $adminStart;
     $braceCount = 0;
     $pos = strpos($routeContent, '{', $adminStart) + 1;
-    
+
     while ($pos < strlen($routeContent)) {
         if ($routeContent[$pos] === '{') {
             $braceCount++;
@@ -37,12 +37,12 @@ if ($adminStart !== false) {
         }
         $pos++;
     }
-    
+
     $adminGroupContent = substr($routeContent, $adminGroupStart, $pos - $adminGroupStart);
-    
+
     if (strpos($adminGroupContent, "Route::prefix('configurations')") !== false) {
         echo "✅ Configurations routes are inside admin middleware\n";
-        
+
         if (strpos($adminGroupContent, "Route::post('/mail/send-custom'") !== false) {
             echo "✅ Mail send-custom route found inside admin group\n";
         } else {
@@ -58,10 +58,10 @@ if ($adminStart !== false) {
 // Test 2: Check controller exists
 echo "\n📋 Test 2: Verifying controller exists...\n";
 
-$controllerFile = __DIR__ . '/app/Http/Controllers/Auth/EmailVerificationController.php';
+$controllerFile = __DIR__.'/app/Http/Controllers/Auth/EmailVerificationController.php';
 if (file_exists($controllerFile)) {
     echo "✅ EmailVerificationController found\n";
-    
+
     $controllerContent = file_get_contents($controllerFile);
     if (strpos($controllerContent, 'public function sendCustomEmail') !== false) {
         echo "✅ sendCustomEmail method found\n";
@@ -75,10 +75,10 @@ if (file_exists($controllerFile)) {
 // Test 3: Check endpoint definition in frontend
 echo "\n📋 Test 3: Verifying frontend endpoint...\n";
 
-$endpointsFile = __DIR__ . '/../BCommerceFontEnd/src/constants/apiEndpoints.ts';
+$endpointsFile = __DIR__.'/../BCommerceFontEnd/src/constants/apiEndpoints.ts';
 if (file_exists($endpointsFile)) {
     echo "✅ Frontend endpoints file found\n";
-    
+
     $endpointsContent = file_get_contents($endpointsFile);
     if (strpos($endpointsContent, 'MAIL_SEND_CUSTOM: "/admin/configurations/mail/send-custom"') !== false) {
         echo "✅ MAIL_SEND_CUSTOM endpoint correctly defined\n";
@@ -96,12 +96,12 @@ $requestData = [
     'user_id' => 123, // Kevin's user ID (example)
     'subject' => '🧪 Test Email - BCommerce Admin Panel',
     'message' => 'Test message content',
-    'email_type' => 'custom'
+    'email_type' => 'custom',
 ];
 
 echo "📤 Request would be sent to: POST /api/admin/configurations/mail/send-custom\n";
 echo "📋 Request payload:\n";
-echo json_encode($requestData, JSON_PRETTY_PRINT) . "\n";
+echo json_encode($requestData, JSON_PRETTY_PRINT)."\n";
 
 echo "🔐 Required headers:\n";
 echo "- Authorization: Bearer {jwt_token}\n";
@@ -120,7 +120,7 @@ echo "✅ Authenticated admin users: 200 OK + email sent\n";
 echo "❌ Non-admin users: 403 Forbidden\n";
 echo "❌ Unauthenticated users: 401 Unauthorized\n";
 
-echo "\n" . str_repeat("=", 60) . "\n";
+echo "\n".str_repeat('=', 60)."\n";
 echo "🏁 Configuration Analysis Complete\n";
 echo "\n🎉 RESULT: The endpoint is correctly configured!\n";
 echo "📧 Ready to send emails to kevinvillajim@hotmail.com in production\n";

@@ -2,44 +2,49 @@
 
 namespace Tests\Feature\Payment;
 
-use App\Models\User;
-use App\Models\Seller;
-use App\Models\Category;
-use App\Models\Product;
-use App\Models\ShoppingCart;
-use App\Models\CartItem;
-use App\Models\AdminDiscountCode;
-use App\Models\Order;
-use App\Models\SellerOrder;
-use App\Models\DatafastPayment;
-use App\Models\DeunaPayment;
-use App\UseCases\Checkout\ProcessCheckoutUseCase;
-use App\Infrastructure\Repositories\EloquentShoppingCartRepository;
+use App\Domain\Interfaces\PaymentGatewayInterface;
+use App\Domain\Services\PricingCalculatorService;
 use App\Infrastructure\Repositories\EloquentOrderRepository;
 use App\Infrastructure\Repositories\EloquentProductRepository;
 use App\Infrastructure\Repositories\EloquentSellerOrderRepository;
-use App\UseCases\Order\CreateOrderUseCase;
+use App\Infrastructure\Repositories\EloquentShoppingCartRepository;
+use App\Models\AdminDiscountCode;
+use App\Models\CartItem;
+use App\Models\Category;
+use App\Models\Order;
+use App\Models\Product;
+use App\Models\Seller;
+use App\Models\ShoppingCart;
+use App\Models\User;
 use App\Services\ConfigurationService;
 use App\UseCases\Cart\ApplyCartDiscountCodeUseCase;
-use App\Domain\Services\PricingCalculatorService;
-use App\Domain\Interfaces\PaymentGatewayInterface;
+use App\UseCases\Checkout\ProcessCheckoutUseCase;
+use App\UseCases\Order\CreateOrderUseCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
-use PHPUnit\Framework\Attributes\Test;
 use Mockery;
+use PHPUnit\Framework\Attributes\Test;
+use Tests\TestCase;
 
 class PaymentGatewaysOrderCreationTest extends TestCase
 {
     use RefreshDatabase;
 
     private User $buyer;
+
     private User $sellerUser;
+
     private Seller $seller;
+
     private Category $category;
+
     private Product $product1;
+
     private Product $product2;
+
     private ShoppingCart $cart;
+
     private AdminDiscountCode $discountCode;
+
     private ProcessCheckoutUseCase $checkoutUseCase;
 
     protected function setUp(): void
@@ -54,24 +59,24 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         // 🛍️ Crear comprador
         $this->buyer = User::factory()->create([
             'name' => 'María González',
-            'email' => 'maria@payment-test.com'
+            'email' => 'maria@payment-test.com',
         ]);
 
         // 🏪 Crear vendedor
         $this->sellerUser = User::factory()->create([
             'name' => 'Carlos Vendor',
-            'email' => 'carlos@payment-test.com'
+            'email' => 'carlos@payment-test.com',
         ]);
 
         $this->seller = Seller::factory()->create([
             'user_id' => $this->sellerUser->id,
             'store_name' => 'Tienda Payment Test',
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         // 📦 Crear categoría
         $this->category = Category::factory()->create([
-            'name' => 'Electronics Payment Test'
+            'name' => 'Electronics Payment Test',
         ]);
 
         // 📱 Crear productos con descuentos del seller
@@ -84,7 +89,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'seller_id' => $this->seller->id,
             'category_id' => $this->category->id,
             'status' => 'active',
-            'published' => true
+            'published' => true,
         ]);
 
         $this->product2 = Product::factory()->create([
@@ -96,12 +101,12 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'seller_id' => $this->seller->id,
             'category_id' => $this->category->id,
             'status' => 'active',
-            'published' => true
+            'published' => true,
         ]);
 
         // 🛒 Crear carrito con productos (6 items para activar descuentos por volumen)
         $this->cart = ShoppingCart::factory()->create([
-            'user_id' => $this->buyer->id
+            'user_id' => $this->buyer->id,
         ]);
 
         // Producto 1: 4 unidades
@@ -110,22 +115,22 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'product_id' => $this->product1->id,
             'quantity' => 4,
             'price' => 599.99,
-            'subtotal' => 2399.96
+            'subtotal' => 2399.96,
         ]);
 
-        // Producto 2: 2 unidades  
+        // Producto 2: 2 unidades
         CartItem::factory()->create([
             'cart_id' => $this->cart->id,
             'product_id' => $this->product2->id,
             'quantity' => 2,
             'price' => 129.99,
-            'subtotal' => 259.98
+            'subtotal' => 259.98,
         ]);
 
         // 👨‍💼 Crear admin para códigos de descuento
         $admin = User::factory()->create([
             'name' => 'Admin Payment Test',
-            'email' => 'admin@payment-test.com'
+            'email' => 'admin@payment-test.com',
         ]);
 
         // 🎟️ Crear código de descuento
@@ -135,28 +140,28 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'is_used' => false,
             'expires_at' => now()->addDays(30),
             'description' => 'Código de prueba para payment gateways',
-            'created_by' => $admin->id
+            'created_by' => $admin->id,
         ]);
     }
 
     private function setupCheckoutUseCase(): void
     {
         // 🏗️ Crear servicios reales
-        $cartRepository = new EloquentShoppingCartRepository();
-        $orderRepository = new EloquentOrderRepository();
-        $productRepository = new EloquentProductRepository();
-        $sellerOrderRepository = new EloquentSellerOrderRepository();
-        
+        $cartRepository = new EloquentShoppingCartRepository;
+        $orderRepository = new EloquentOrderRepository;
+        $productRepository = new EloquentProductRepository;
+        $sellerOrderRepository = new EloquentSellerOrderRepository;
+
         $createOrderUseCase = new CreateOrderUseCase(
             $orderRepository,
             $productRepository
         );
 
-        $configService = new ConfigurationService();
+        $configService = new ConfigurationService;
         $applyCartDiscountUseCase = new ApplyCartDiscountCodeUseCase(
             new \App\Services\PricingService($configService)
         );
-        
+
         $pricingService = new PricingCalculatorService(
             $productRepository,
             $configService,
@@ -192,33 +197,33 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             ->method('processPayment')
             ->willReturn([
                 'success' => true,
-                'payment_id' => 'df_test_' . uniqid(),
-                'checkout_id' => 'checkout_' . uniqid(),
-                'transaction_id' => 'txn_' . uniqid(),
+                'payment_id' => 'df_test_'.uniqid(),
+                'checkout_id' => 'checkout_'.uniqid(),
+                'transaction_id' => 'txn_'.uniqid(),
                 'message' => 'Pago procesado exitosamente con Datafast',
-                'gateway' => 'datafast'
+                'gateway' => 'datafast',
             ]);
 
         // Reemplazar el mock en el use case
         $this->checkoutUseCase = new ProcessCheckoutUseCase(
-            new EloquentShoppingCartRepository(),
-            new EloquentOrderRepository(),
-            new EloquentProductRepository(),
-            new EloquentSellerOrderRepository(),
+            new EloquentShoppingCartRepository,
+            new EloquentOrderRepository,
+            new EloquentProductRepository,
+            new EloquentSellerOrderRepository,
             $paymentGateway,
             new CreateOrderUseCase(
-                new EloquentOrderRepository(),
-                new EloquentProductRepository()
+                new EloquentOrderRepository,
+                new EloquentProductRepository
             ),
-            new ConfigurationService(),
+            new ConfigurationService,
             new ApplyCartDiscountCodeUseCase(
-                new \App\Services\PricingService(new ConfigurationService())
+                new \App\Services\PricingService(new ConfigurationService)
             ),
             new PricingCalculatorService(
-                new EloquentProductRepository(),
-                new ConfigurationService(),
+                new EloquentProductRepository,
+                new ConfigurationService,
                 new ApplyCartDiscountCodeUseCase(
-                    new \App\Services\PricingService(new ConfigurationService())
+                    new \App\Services\PricingService(new ConfigurationService)
                 )
             )
         );
@@ -226,14 +231,14 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         // 💳 Datos de pago Datafast
         $paymentData = [
             'method' => 'datafast',
-            'gateway' => 'datafast'
+            'gateway' => 'datafast',
         ];
 
         // 📮 Datos de envío
         $shippingData = [
             'address' => 'Av. 10 de Agosto 1234, Edificio Test',
             'city' => 'Quito',
-            'country' => 'Ecuador'
+            'country' => 'Ecuador',
         ];
 
         echo "💳 Método de pago: Datafast\n";
@@ -242,11 +247,11 @@ class PaymentGatewaysOrderCreationTest extends TestCase
 
         // ⚡ EJECUTAR CHECKOUT con Datafast
         $result = $this->checkoutUseCase->execute(
-            $this->buyer->id, 
-            $paymentData, 
-            $shippingData, 
+            $this->buyer->id,
+            $paymentData,
+            $shippingData,
             [], // items desde carrito
-            null, // seller_id se extrae automáticamente  
+            null, // seller_id se extrae automáticamente
             $this->discountCode->code
         );
 
@@ -290,10 +295,10 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         $this->assertEquals($this->discountCode->code, $order->getFeedbackDiscountCode(), 'Código de descuento debe estar guardado');
         $this->assertGreaterThan(0, $order->getFeedbackDiscountAmount(), 'Feedback discount amount debe estar presente');
 
-        echo "Total: $" . number_format($order->getTotal(), 2) . "\n";
-        echo "Subtotal: $" . number_format($order->getSubtotalProducts(), 2) . "\n";
-        echo "Total Discounts: $" . number_format($order->getTotalDiscounts(), 2) . "\n";
-        echo "Volume Discounts Applied: " . ($order->getVolumeDiscountsApplied() ? 'SÍ' : 'NO') . "\n";
+        echo 'Total: $'.number_format($order->getTotal(), 2)."\n";
+        echo 'Subtotal: $'.number_format($order->getSubtotalProducts(), 2)."\n";
+        echo 'Total Discounts: $'.number_format($order->getTotalDiscounts(), 2)."\n";
+        echo 'Volume Discounts Applied: '.($order->getVolumeDiscountsApplied() ? 'SÍ' : 'NO')."\n";
 
         // 🔍 VERIFICACIONES DE SELLER ORDERS
         $sellerOrders = $result['seller_orders'];
@@ -307,7 +312,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             echo "Seller ID: {$sellerOrder->getSellerId()}\n";
             echo "Status: {$sellerOrder->getStatus()}\n";
             echo "Payment Status: {$sellerOrder->getPaymentStatus()}\n";
-            echo "Total: $" . number_format($sellerOrder->getTotal(), 2) . "\n";
+            echo 'Total: $'.number_format($sellerOrder->getTotal(), 2)."\n";
 
             // ✅ VERIFICACIONES DE SELLER ORDER
             $this->assertEquals('datafast', $sellerOrder->getPaymentMethod(), 'Seller order payment method debe ser datafast');
@@ -330,7 +335,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         echo "==========================================\n";
     }
 
-    #[Test] 
+    #[Test]
     public function it_creates_complete_order_with_deuna_payment_gateway()
     {
         echo "\n";
@@ -343,35 +348,35 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             ->method('processPayment')
             ->willReturn([
                 'success' => true,
-                'payment_id' => 'deuna_test_' . uniqid(),
-                'transaction_id' => 'deuna_txn_' . uniqid(),
+                'payment_id' => 'deuna_test_'.uniqid(),
+                'transaction_id' => 'deuna_txn_'.uniqid(),
                 'qr_code_base64' => base64_encode('fake_qr_code_data'),
                 'payment_url' => 'https://app.deuna.io/payment/test123',
                 'numeric_code' => '123456',
                 'message' => 'Pago procesado exitosamente con Deuna',
-                'gateway' => 'deuna'
+                'gateway' => 'deuna',
             ]);
 
         // Reemplazar el mock en el use case
         $this->checkoutUseCase = new ProcessCheckoutUseCase(
-            new EloquentShoppingCartRepository(),
-            new EloquentOrderRepository(),
-            new EloquentProductRepository(),
-            new EloquentSellerOrderRepository(),
+            new EloquentShoppingCartRepository,
+            new EloquentOrderRepository,
+            new EloquentProductRepository,
+            new EloquentSellerOrderRepository,
             $paymentGateway,
             new CreateOrderUseCase(
-                new EloquentOrderRepository(),
-                new EloquentProductRepository()
+                new EloquentOrderRepository,
+                new EloquentProductRepository
             ),
-            new ConfigurationService(),
+            new ConfigurationService,
             new ApplyCartDiscountCodeUseCase(
-                new \App\Services\PricingService(new ConfigurationService())
+                new \App\Services\PricingService(new ConfigurationService)
             ),
             new PricingCalculatorService(
-                new EloquentProductRepository(),
-                new ConfigurationService(),
+                new EloquentProductRepository,
+                new ConfigurationService,
                 new ApplyCartDiscountCodeUseCase(
-                    new \App\Services\PricingService(new ConfigurationService())
+                    new \App\Services\PricingService(new ConfigurationService)
                 )
             )
         );
@@ -380,14 +385,14 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         $paymentData = [
             'method' => 'de_una',
             'gateway' => 'deuna',
-            'qr_type' => 'dynamic'
+            'qr_type' => 'dynamic',
         ];
 
         // 📮 Datos de envío
         $shippingData = [
             'address' => 'Av. República 5678, Torre Business',
-            'city' => 'Guayaquil', 
-            'country' => 'Ecuador'
+            'city' => 'Guayaquil',
+            'country' => 'Ecuador',
         ];
 
         echo "💳 Método de pago: Deuna (QR)\n";
@@ -404,7 +409,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             $this->discountCode->code
         );
 
-        // 🔍 VERIFICACIONES DE LA ORDEN PRINCIPAL  
+        // 🔍 VERIFICACIONES DE LA ORDEN PRINCIPAL
         $this->assertTrue($result['success'], 'Checkout con Deuna debe ser exitoso');
         $this->assertArrayHasKey('order', $result, 'Debe retornar order');
 
@@ -444,10 +449,10 @@ class PaymentGatewaysOrderCreationTest extends TestCase
         $this->assertEquals($this->discountCode->code, $order->getFeedbackDiscountCode(), 'Código de descuento debe estar guardado');
         $this->assertGreaterThan(0, $order->getFeedbackDiscountAmount(), 'Feedback discount amount debe estar presente');
 
-        echo "Total: $" . number_format($order->getTotal(), 2) . "\n";
-        echo "Subtotal: $" . number_format($order->getSubtotalProducts(), 2) . "\n";
-        echo "Total Discounts: $" . number_format($order->getTotalDiscounts(), 2) . "\n";
-        echo "Volume Discounts Applied: " . ($order->getVolumeDiscountsApplied() ? 'SÍ' : 'NO') . "\n";
+        echo 'Total: $'.number_format($order->getTotal(), 2)."\n";
+        echo 'Subtotal: $'.number_format($order->getSubtotalProducts(), 2)."\n";
+        echo 'Total Discounts: $'.number_format($order->getTotalDiscounts(), 2)."\n";
+        echo 'Volume Discounts Applied: '.($order->getVolumeDiscountsApplied() ? 'SÍ' : 'NO')."\n";
 
         // 🔍 VERIFICACIONES DE SELLER ORDERS (idénticas al test de Datafast)
         $sellerOrders = $result['seller_orders'];
@@ -461,7 +466,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             echo "Seller ID: {$sellerOrder->getSellerId()}\n";
             echo "Status: {$sellerOrder->getStatus()}\n";
             echo "Payment Status: {$sellerOrder->getPaymentStatus()}\n";
-            echo "Total: $" . number_format($sellerOrder->getTotal(), 2) . "\n";
+            echo 'Total: $'.number_format($sellerOrder->getTotal(), 2)."\n";
 
             // ✅ VERIFICACIONES DE SELLER ORDER
             $this->assertEquals('de_una', $sellerOrder->getPaymentMethod(), 'Seller order payment method debe ser de_una');
@@ -494,7 +499,7 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'success' => true,
             'payment_id' => 'datafast_comparison',
             'message' => 'Datafast success',
-            'gateway' => 'datafast'
+            'gateway' => 'datafast',
         ]);
 
         // 🎯 Mock para Deuna
@@ -503,16 +508,16 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'success' => true,
             'payment_id' => 'deuna_comparison',
             'message' => 'Deuna success',
-            'gateway' => 'deuna'
+            'gateway' => 'deuna',
         ]);
 
         // Crear servicios base
-        $cartRepo = new EloquentShoppingCartRepository();
-        $orderRepo = new EloquentOrderRepository();
-        $productRepo = new EloquentProductRepository();
-        $sellerOrderRepo = new EloquentSellerOrderRepository();
+        $cartRepo = new EloquentShoppingCartRepository;
+        $orderRepo = new EloquentOrderRepository;
+        $productRepo = new EloquentProductRepository;
+        $sellerOrderRepo = new EloquentSellerOrderRepository;
         $createOrderUseCase = new CreateOrderUseCase($orderRepo, $productRepo);
-        $configService = new ConfigurationService();
+        $configService = new ConfigurationService;
         $discountUseCase = new ApplyCartDiscountCodeUseCase(new \App\Services\PricingService($configService));
         $pricingService = new PricingCalculatorService($productRepo, $configService, $discountUseCase);
 
@@ -535,13 +540,13 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             [
                 'product_id' => $this->product1->id,
                 'quantity' => 4,
-                'price' => $this->product1->price
+                'price' => $this->product1->price,
             ],
             [
                 'product_id' => $this->product2->id,
                 'quantity' => 2,
-                'price' => $this->product2->price
-            ]
+                'price' => $this->product2->price,
+            ],
         ];
 
         // ⚡ EJECUTAR CHECKOUT CON DATAFAST
@@ -561,10 +566,10 @@ class PaymentGatewaysOrderCreationTest extends TestCase
             'is_used' => false,
             'expires_at' => now()->addDays(30),
             'description' => 'Código de prueba para comparación',
-            'created_by' => User::first()->id
+            'created_by' => User::first()->id,
         ]);
 
-        // ⚡ EJECUTAR CHECKOUT CON DEUNA  
+        // ⚡ EJECUTAR CHECKOUT CON DEUNA
         $deunaResult = $deunaCheckout->execute(
             $this->buyer->id,
             ['method' => 'de_una'],
@@ -580,8 +585,8 @@ class PaymentGatewaysOrderCreationTest extends TestCase
 
         echo "🔍 COMPARANDO CÁLCULOS:\n";
         echo "======================\n";
-        echo "Datafast Total: $" . number_format($datafastOrder->getTotal(), 2) . "\n";
-        echo "Deuna Total: $" . number_format($deunaOrder->getTotal(), 2) . "\n";
+        echo 'Datafast Total: $'.number_format($datafastOrder->getTotal(), 2)."\n";
+        echo 'Deuna Total: $'.number_format($deunaOrder->getTotal(), 2)."\n";
 
         // ✅ VERIFICAR QUE LOS CÁLCULOS SEAN IDÉNTICOS
         $this->assertEquals($datafastOrder->getTotal(), $deunaOrder->getTotal(), 'Total debe ser idéntico');

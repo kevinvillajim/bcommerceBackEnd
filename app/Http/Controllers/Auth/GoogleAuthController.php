@@ -57,7 +57,7 @@ class GoogleAuthController extends Controller
                 ->scopes(['openid', 'profile', 'email'])
                 ->with([
                     'prompt' => 'select_account',
-                    'access_type' => 'offline'
+                    'access_type' => 'offline',
                 ])
                 ->redirect();
         } catch (\Exception $e) {

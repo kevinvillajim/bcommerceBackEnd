@@ -101,7 +101,7 @@ return [
     |
     */
 
-    'ttl' => (int) env('JWT_TTL', 60),
+    'ttl' => (int) env('SESSION_LIFETIME', 120),
 
     /*
     |--------------------------------------------------------------------------
@@ -170,8 +170,8 @@ return [
         // 'foo',
         // 'bar',
         'exp' => function () {
-            // Explicitly convert to integer
-            $ttl = (int) config('jwt.ttl', 60);
+            // Use env directly to avoid circular reference
+            $ttl = (int) env('SESSION_LIFETIME', 120);
 
             return now()->addMinutes($ttl);
         },

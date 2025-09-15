@@ -46,7 +46,8 @@ class LoginUserUseCaseTest extends TestCase
     #[Test]
     public function it_returns_token_for_valid_credentials()
     {
-        config(['jwt.ttl' => 60]);
+        // JWT TTL is now managed by centralized session_timeout configuration
+        config(['session_timeout.ttl' => 60]);
         // Arrange - setup JWT service mock to return a token
         $this->jwtServiceMock->shouldReceive('generateToken')
             ->once()

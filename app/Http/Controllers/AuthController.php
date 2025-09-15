@@ -182,7 +182,7 @@ class AuthController extends Controller
             }
 
             // Verificar si el email está verificado
-            if (!$user->hasVerifiedEmail()) {
+            if (! $user->hasVerifiedEmail()) {
                 Log::info('Login attempt with unverified email', [
                     'user_id' => $user->id,
                     'email' => $user->email,
@@ -201,44 +201,44 @@ class AuthController extends Controller
 
             // Check seller status and create notification if needed
             $seller = \App\Models\Seller::where('user_id', $user->id)->first();
-            \Log::info("🔍 DEBUG - Seller encontrado:", ['seller_id' => $seller?->id, 'status' => $seller?->status, 'user_id' => $user->id]);
-            
+            \Log::info('🔍 DEBUG - Seller encontrado:', ['seller_id' => $seller?->id, 'status' => $seller?->status, 'user_id' => $user->id]);
+
             if ($seller && in_array($seller->status, ['suspended', 'inactive'])) {
-                \Log::info("🚨 Seller con status problemático detectado durante login", [
+                \Log::info('🚨 Seller con status problemático detectado durante login', [
                     'user_id' => $user->id,
                     'seller_id' => $seller->id,
                     'seller_status' => $seller->status,
-                    'store_name' => $seller->store_name
+                    'store_name' => $seller->store_name,
                 ]);
-                
+
                 // Determinar el tipo de notificación específico
                 $notificationType = $seller->status === 'suspended' ? 'seller_suspended' : 'seller_inactive';
-                
+
                 // Verificar si ya existe una notificación NO LEÍDA del tipo específico
                 $unreadNotification = \App\Models\Notification::where('user_id', $user->id)
                     ->where('type', $notificationType)
                     ->where('read', false)
                     ->first();
-                
+
                 $shouldCreateNotification = false;
-                
-                if (!$unreadNotification) {
+
+                if (! $unreadNotification) {
                     // No hay notificación no leída del tipo específico, crear una nueva
                     $shouldCreateNotification = true;
-                    \Log::info("✅ No hay notificación no leída específica para status, creando nueva", [
+                    \Log::info('✅ No hay notificación no leída específica para status, creando nueva', [
                         'user_id' => $user->id,
                         'notification_type' => $notificationType,
-                        'seller_status' => $seller->status
+                        'seller_status' => $seller->status,
                     ]);
                 } else {
-                    \Log::info("ℹ️ Ya existe notificación no leída del tipo específico", [
+                    \Log::info('ℹ️ Ya existe notificación no leída del tipo específico', [
                         'user_id' => $user->id,
                         'notification_id' => $unreadNotification->id,
                         'notification_type' => $notificationType,
-                        'seller_status' => $seller->status
+                        'seller_status' => $seller->status,
                     ]);
                 }
-                
+
                 if ($shouldCreateNotification) {
                     // Preparar mensajes específicos y detallados
                     if ($seller->status === 'suspended') {
@@ -248,7 +248,7 @@ class AuthController extends Controller
                         $title = 'Cuenta de vendedor desactivada';
                         $message = 'Tu cuenta de vendedor ha sido desactivada. Contacta al administrador para reactivar tu cuenta.';
                     }
-                    
+
                     try {
                         $notification = \App\Models\Notification::create([
                             'user_id' => $user->id,
@@ -258,24 +258,24 @@ class AuthController extends Controller
                             'read' => false,
                             'data' => [
                                 'seller_status' => $seller->status,
-                                'store_name' => $seller->store_name
-                            ]
+                                'store_name' => $seller->store_name,
+                            ],
                         ]);
-                        
-                        \Log::info("✅ Notificación específica creada exitosamente", [
+
+                        \Log::info('✅ Notificación específica creada exitosamente', [
                             'user_id' => $user->id,
                             'notification_id' => $notification->id,
                             'notification_type' => $notificationType,
                             'seller_status' => $seller->status,
-                            'title' => $title
+                            'title' => $title,
                         ]);
                     } catch (\Exception $e) {
-                        \Log::error("❌ Error al crear notificación específica para seller", [
+                        \Log::error('❌ Error al crear notificación específica para seller', [
                             'user_id' => $user->id,
                             'seller_status' => $seller->status,
                             'notification_type' => $notificationType,
                             'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString()
+                            'trace' => $e->getTraceAsString(),
                         ]);
                     }
                 }
@@ -293,12 +293,20 @@ class AuthController extends Controller
                 return response()->json(['error' => 'No se pudo generar el token'], 500);
             }
 
+            // Obtener configuración de timeout de sesión
+            $timeoutMinutes = config('session_timeout.ttl');
+            $expiresAt = now()->addMinutes($timeoutMinutes);
+
             // Devolver respuesta
             return response()->json([
                 'access_token' => $token,
                 'token_type' => 'bearer',
-                'expires_in' => TokenHelper::getTokenTTL() * 60, // Convert to seconds
+                'expires_in' => TokenHelper::getExpiresInSeconds(),
                 'user' => $user,
+                'session_config' => [
+                    'timeout_minutes' => $timeoutMinutes,
+                    'expires_at' => $expiresAt->toISOString(),
+                ],
             ]);
         } catch (ValidationException $e) {
             // Manejar errores de validación
@@ -376,12 +384,22 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Could not refresh token'], 401);
             }
 
-            return response()->json([
+            // Obtener configuración de timeout de sesión
+            $timeoutMinutes = config('session_timeout.ttl');
+            $expiresAt = now()->addMinutes($timeoutMinutes);
+
+            $response = response()->json([
                 'access_token' => $token,
                 'token_type' => 'bearer',
-                'expires_in' => TokenHelper::getTokenTTL() * 60, // Convert to seconds
+                'expires_in' => TokenHelper::getExpiresInSeconds(),
                 'user' => $tokenValidation['user'],
             ]);
+
+            // Agregar headers de sesión para sincronización del frontend
+            $response->headers->set('X-Session-Timeout', $timeoutMinutes * 60); // en segundos
+            $response->headers->set('X-Session-Expires', $expiresAt->toISOString());
+
+            return $response;
         } catch (JWTException $e) {
             return response()->json(['error' => 'Could not refresh token'], 401);
         }

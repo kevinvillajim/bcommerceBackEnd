@@ -217,7 +217,7 @@ class DeunaWebhookController extends Controller
                 'amount' => $existingPayment->amount, // ✅ USE REAL AMOUNT
                 'currency' => $existingPayment->currency ?? 'USD', // ✅ USE REAL CURRENCY
                 'customerEmail' => $existingPayment->customer['email'] ?? 'test@example.com', // ✅ REAL CUSTOMER
-                'customerFullName' => $existingPayment->customer['name'] ?? 'Test Customer', // ✅ REAL NAME  
+                'customerFullName' => $existingPayment->customer['name'] ?? 'Test Customer', // ✅ REAL NAME
                 'customerIdentification' => $existingPayment->customer['identification'] ?? '1234567890',
                 'transferNumber' => 'SIM-'.time(),
                 'branchId' => config('deuna.point_of_sale'), // ✅ USE REAL BRANCH
@@ -241,7 +241,7 @@ class DeunaWebhookController extends Controller
                 'currency' => $webhookData['currency'],
                 'customer_email' => $webhookData['customerEmail'],
                 'items_count' => count($webhookData['items']),
-                'has_product_ids' => !empty($webhookData['items']) ? array_column($webhookData['items'], 'product_id') : 'no_items',
+                'has_product_ids' => ! empty($webhookData['items']) ? array_column($webhookData['items'], 'product_id') : 'no_items',
             ]);
 
             Log::info('🚀 Processing simulated webhook data', [

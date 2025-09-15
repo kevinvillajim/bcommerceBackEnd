@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 
 class EcuadorTimeService
 {
@@ -58,8 +57,8 @@ class EcuadorTimeService
     public static function formatFriendly($date): string
     {
         $ecuadorTime = self::toEcuadorTime($date);
-        
-        return $ecuadorTime->format('d/m/Y H:i') . ' ECT';
+
+        return $ecuadorTime->format('d/m/Y H:i').' ECT';
     }
 
     /**
@@ -69,7 +68,7 @@ class EcuadorTimeService
     {
         $ecuadorTime = self::toEcuadorTime($date);
         $nowEcuador = self::now();
-        
+
         return $ecuadorTime->diffForHumans($nowEcuador);
     }
 
@@ -105,6 +104,7 @@ class EcuadorTimeService
     {
         // Asumimos que las fechas en BD están en UTC
         $utcDate = Carbon::parse($databaseDate, 'UTC');
+
         return $utcDate->setTimezone(self::ECUADOR_TIMEZONE);
     }
 
@@ -123,7 +123,7 @@ class EcuadorTimeService
     public static function getTimezoneInfo(): array
     {
         $now = self::now();
-        
+
         return [
             'timezone' => self::ECUADOR_TIMEZONE,
             'current_time' => $now->format('Y-m-d H:i:s'),

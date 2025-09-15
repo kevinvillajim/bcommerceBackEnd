@@ -7,10 +7,10 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * ⚠️ CONFIGURACIONES CRÍTICAS DE RESPALDO
- * 
+ *
  * Este seeder contiene las configuraciones esenciales del sistema
  * para recuperarse de pérdidas accidentales de la base de datos.
- * 
+ *
  * NUNCA eliminar este archivo.
  */
 class CriticalConfigurationSeeder extends Seeder
@@ -24,7 +24,7 @@ class CriticalConfigurationSeeder extends Seeder
             // Ratings
             ['key' => 'ratings.auto_approve_all', 'value' => 'false', 'description' => 'Aprobar automáticamente todas las valoraciones', 'category' => 'ratings', 'type' => 'boolean'],
             ['key' => 'ratings.auto_approve_threshold', 'value' => '2', 'description' => 'Umbral de estrellas para aprobación automática (1-5). Las valoraciones por encima de este valor se aprobarán automáticamente.', 'category' => 'ratings', 'type' => 'number'],
-            
+
             // General
             ['key' => 'general.siteName', 'value' => 'Comersia', 'description' => 'Nombre que aparecerá en el título de la página y correos electrónicos', 'category' => 'general', 'type' => 'text'],
             ['key' => 'general.siteDescription', 'value' => 'Plataforma de comercio electrónico especializada en Ecuador', 'description' => 'Breve descripción para SEO y compartir en redes sociales', 'category' => 'general', 'type' => 'textarea'],
@@ -36,7 +36,7 @@ class CriticalConfigurationSeeder extends Seeder
             ['key' => 'general.defaultLanguage', 'value' => 'es', 'description' => 'Idioma predeterminado del sitio', 'category' => 'general', 'type' => 'select'],
             ['key' => 'general.defaultCurrency', 'value' => 'USD', 'description' => 'Moneda predeterminada del sitio', 'category' => 'general', 'type' => 'select'],
             ['key' => 'general.timeZone', 'value' => 'America/Guayaquil', 'description' => 'Zona horaria del sitio', 'category' => 'general', 'type' => 'select'],
-            
+
             // Email
             ['key' => 'email.smtpHost', 'value' => 'mail.comersia.app', 'description' => 'Servidor SMTP para envío de correos', 'category' => 'email', 'type' => 'text'],
             ['key' => 'email.smtpPort', 'value' => '465', 'description' => 'Puerto SMTP', 'category' => 'email', 'type' => 'number'],
@@ -52,7 +52,7 @@ class CriticalConfigurationSeeder extends Seeder
             ['key' => 'email.bypassVerification', 'value' => '1', 'description' => 'Bypass email verification for development/testing', 'category' => 'email', 'type' => 'boolean'],
             ['key' => 'email.requireVerification', 'value' => 'false', 'description' => 'Require email verification for new accounts', 'category' => 'email', 'type' => 'boolean'],
             ['key' => 'email.verificationTimeout', 'value' => '24', 'description' => 'Email verification token timeout in hours', 'category' => 'email', 'type' => 'number'],
-            
+
             // Security
             ['key' => 'security.passwordMinLength', 'value' => '8', 'description' => 'Longitud mínima requerida para contraseñas de usuario', 'category' => 'security', 'type' => 'number'],
             ['key' => 'security.passwordRequireSpecial', 'value' => 'true', 'description' => 'Requerir al menos un carácter especial en las contraseñas', 'category' => 'security', 'type' => 'boolean'],
@@ -64,32 +64,32 @@ class CriticalConfigurationSeeder extends Seeder
             ['key' => 'security.requireEmailVerification', 'value' => 'true', 'description' => 'Requerir verificación de email para cuentas nuevas', 'category' => 'security', 'type' => 'boolean'],
             ['key' => 'security.adminIpRestriction', 'value' => '', 'description' => 'Lista de IPs permitidas para acceso administrativo (una por línea, vacío = sin restricción)', 'category' => 'security', 'type' => 'textarea'],
             ['key' => 'security.enableCaptcha', 'value' => 'false', 'description' => 'Habilitar CAPTCHA en formularios de registro y login', 'category' => 'security', 'type' => 'boolean'],
-            
+
             // Payment
             ['key' => 'payment.currencySymbol', 'value' => '$', 'description' => 'Símbolo de moneda', 'category' => 'payment', 'type' => 'text'],
             ['key' => 'payment.currencyCode', 'value' => 'USD', 'description' => 'Código de moneda', 'category' => 'payment', 'type' => 'text'],
             ['key' => 'payment.taxRate', 'value' => '15', 'description' => 'Tasa de impuesto (%) - IVA Ecuador', 'category' => 'payment', 'type' => 'number'],
-            
+
             // Volume Discounts
             ['key' => 'volume_discounts.enabled', 'value' => 'true', 'description' => 'Habilitar descuentos por volumen en toda la tienda', 'category' => 'volume_discounts', 'type' => 'boolean'],
             ['key' => 'volume_discounts.stackable', 'value' => 'true', 'description' => 'Permitir que los descuentos por volumen se combinen con otros descuentos', 'category' => 'volume_discounts', 'type' => 'boolean'],
             ['key' => 'volume_discounts.default_tiers', 'value' => '[{"quantity":3,"discount":5,"label":"Descuento 3+"},{"quantity":6,"discount":10,"label":"Descuento 6+"},{"quantity":12,"discount":15,"label":"Descuento 12+"}]', 'description' => 'Niveles de descuento por defecto para nuevos productos', 'category' => 'volume_discounts', 'type' => 'json'],
             ['key' => 'volume_discounts.show_savings_message', 'value' => 'true', 'description' => 'Mostrar mensaje de ahorro en páginas de producto', 'category' => 'volume_discounts', 'type' => 'boolean'],
-            
+
             // Shipping
             ['key' => 'shipping.free_threshold', 'value' => '50', 'description' => 'Umbral en USD para envío gratis', 'category' => 'shipping', 'type' => 'decimal'],
             ['key' => 'shipping.default_cost', 'value' => '5', 'description' => 'Costo de envío por defecto en USD', 'category' => 'shipping', 'type' => 'decimal'],
             ['key' => 'shipping.enabled', 'value' => 'true', 'description' => 'Habilitar cálculo de costos de envío', 'category' => 'shipping', 'type' => 'boolean'],
             ['key' => 'shipping.seller_percentage', 'value' => '80.0', 'description' => 'Porcentaje del costo de envío que recibe un seller cuando hay un solo vendedor', 'category' => 'general', 'type' => 'text'],
             ['key' => 'shipping.max_seller_percentage', 'value' => '40.0', 'description' => 'Máximo porcentaje del costo de envío que puede recibir un solo vendedor cuando hay múltiples', 'category' => 'general', 'type' => 'text'],
-            
+
             // Platform
             ['key' => 'platform.commission_rate', 'value' => '10.0', 'description' => 'Porcentaje de comisión que cobra la plataforma a los vendedores', 'category' => 'general', 'type' => 'text'],
-            
+
             // Development
             ['key' => 'development.mode', 'value' => 'false', 'description' => 'Enable development mode for system updates and maintenance', 'category' => 'development', 'type' => 'boolean'],
             ['key' => 'development.allowAdminOnlyAccess', 'value' => 'false', 'description' => 'Restrict access to administrators only during maintenance', 'category' => 'development', 'type' => 'boolean'],
-            
+
             // Moderation
             ['key' => 'moderation.userStrikesThreshold', 'value' => '3', 'description' => 'Número de strikes que puede acumular un usuario antes de ser bloqueado automáticamente', 'category' => 'moderation', 'type' => 'number'],
             ['key' => 'moderation.contactScorePenalty', 'value' => '3', 'description' => 'Puntos añadidos al score de contacto por patrones sospechosos', 'category' => 'moderation', 'type' => 'number'],
@@ -100,7 +100,7 @@ class CriticalConfigurationSeeder extends Seeder
             ['key' => 'moderation.consecutiveNumbersLimit', 'value' => '7', 'description' => 'Número de dígitos consecutivos que activan la detección de teléfonos', 'category' => 'moderation', 'type' => 'number'],
             ['key' => 'moderation.numbersWithContextLimit', 'value' => '3', 'description' => 'Número de dígitos que, junto con palabras de contacto, activan la detección', 'category' => 'moderation', 'type' => 'number'],
             ['key' => 'moderation.lowStockThreshold', 'value' => '10', 'description' => 'Cantidad mínima de productos en stock antes de mostrar aviso de stock bajo', 'category' => 'moderation', 'type' => 'number'],
-            
+
             // Limits
             ['key' => 'limits.cartMaxItems', 'value' => '100', 'description' => 'Número máximo de productos diferentes que puede tener un carrito', 'category' => 'limits', 'type' => 'number'],
             ['key' => 'limits.cartMaxQuantityPerItem', 'value' => '99', 'description' => 'Cantidad máxima que se puede agregar de un mismo producto', 'category' => 'limits', 'type' => 'number'],
@@ -120,11 +120,11 @@ class CriticalConfigurationSeeder extends Seeder
                     'group' => $config['category'], // La tabla usa 'group' no 'category'
                     'type' => $config['type'],
                     'updated_at' => now(),
-                    'created_at' => now()
+                    'created_at' => now(),
                 ]
             );
         }
 
-        $this->command->info('✅ Configuraciones críticas insertadas/actualizadas: ' . count($configurations));
+        $this->command->info('✅ Configuraciones críticas insertadas/actualizadas: '.count($configurations));
     }
 }

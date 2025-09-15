@@ -2,11 +2,11 @@
 
 namespace App\Listeners;
 
+use App\Events\InvoiceGenerated;
 use App\Events\OrderCreated;
 use App\UseCases\Accounting\GenerateInvoiceFromOrderUseCase;
-use App\Events\InvoiceGenerated;
-use Illuminate\Support\Facades\Log;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class GenerateInvoiceFromOrderListener
 {
@@ -24,23 +24,24 @@ class GenerateInvoiceFromOrderListener
     {
         Log::info('🎯 LISTENER: GenerateInvoiceFromOrderListener ejecutándose', [
             'order_id' => $event->orderId,
-            'user_id' => $event->userId
+            'user_id' => $event->userId,
         ]);
 
         // ✅ Cargar orden desde el orderId del evento
         $order = \App\Models\Order::find($event->orderId);
-        
-        if (!$order) {
+
+        if (! $order) {
             Log::error('Orden no encontrada para generar factura', [
-                'order_id' => $event->orderId
+                'order_id' => $event->orderId,
             ]);
+
             return;
         }
 
         Log::info('Procesando generación automática de factura', [
             'order_id' => $order->id,
             'user_id' => $order->user_id,
-            'total_amount' => $order->total_amount
+            'total_amount' => $order->total_amount,
         ]);
 
         try {
@@ -48,8 +49,9 @@ class GenerateInvoiceFromOrderListener
             if ($order->payment_status !== 'completed') {
                 Log::info('Orden sin pago confirmado, saltando generación de factura', [
                     'order_id' => $order->id,
-                    'payment_status' => $order->payment_status
+                    'payment_status' => $order->payment_status,
                 ]);
+
                 return;
             }
 
@@ -61,15 +63,16 @@ class GenerateInvoiceFromOrderListener
                     'existing_invoice_id' => $existingInvoice->id,
                     'existing_invoice_number' => $existingInvoice->invoice_number,
                     'existing_invoice_status' => $existingInvoice->status,
-                    'protection_method' => 'order->invoice relationship'
+                    'protection_method' => 'order->invoice relationship',
                 ]);
+
                 return;
             }
 
             Log::info('🔍 VERIFICACIÓN: No hay factura existente para esta orden, procederemos a generar', [
                 'order_id' => $order->id,
                 'order_payment_status' => $order->payment_status,
-                'invoice_relationship_loaded' => $order->relationLoaded('invoice')
+                'invoice_relationship_loaded' => $order->relationLoaded('invoice'),
             ]);
 
             // ✅ Generar la factura
@@ -78,7 +81,7 @@ class GenerateInvoiceFromOrderListener
             Log::info('Factura generada automáticamente', [
                 'invoice_id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
-                'order_id' => $order->id
+                'order_id' => $order->id,
             ]);
 
             // ✅ Disparar evento de factura generada para que sea enviada al SRI
@@ -88,7 +91,7 @@ class GenerateInvoiceFromOrderListener
             Log::error('Error generando factura automáticamente', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             // ✅ No lanzar la excepción para no afectar el flujo de checkout

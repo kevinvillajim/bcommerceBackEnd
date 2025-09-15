@@ -74,18 +74,37 @@ class TokenHelper
     public static function getTokenTTL(): int
     {
         try {
-            // Prioritize getting TTL from JWT configuration
-            $ttl = config('jwt.ttl', 60);
+            // Use centralized expires_in configuration (in seconds)
+            // Convert to minutes for backwards compatibility
+            $expiresInSeconds = config('session_timeout.expires_in', 900);
 
-            // Ensure TTL is a positive integer
-            return max(15, intval($ttl));
+            return intval($expiresInSeconds / 60);
         } catch (\Exception $e) {
             Log::error('Error getting token TTL', [
                 'error' => $e->getMessage(),
             ]);
 
-            // Fallback to default 60 minutes
-            return 60;
+            // Fallback to default 15 minutes
+            return 15;
+        }
+    }
+
+    /**
+     * Get token expires_in value in seconds (for API responses)
+     *
+     * @return int Token expires_in in seconds
+     */
+    public static function getExpiresInSeconds(): int
+    {
+        try {
+            return config('session_timeout.expires_in', 900);
+        } catch (\Exception $e) {
+            Log::error('Error getting expires_in seconds', [
+                'error' => $e->getMessage(),
+            ]);
+
+            // Fallback to default 900 seconds (15 minutes)
+            return 900;
         }
     }
 

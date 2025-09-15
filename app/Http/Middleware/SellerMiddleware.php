@@ -56,19 +56,19 @@ class SellerMiddleware
             'api/seller/dashboard',
             'api/seller/info',
         ];
-        
+
         $currentPath = $request->path();
         $isReadOnlyRoute = false;
-        
+
         foreach ($readOnlyRoutes as $route) {
             if (str_contains($currentPath, $route)) {
                 $isReadOnlyRoute = true;
                 break;
             }
         }
-        
+
         // Si no es una ruta de solo lectura y el vendedor no está activo, denegar acceso
-        if (!$isReadOnlyRoute && $seller->status !== 'active') {
+        if (! $isReadOnlyRoute && $seller->status !== 'active') {
             $statusMessages = [
                 'pending' => 'Tu cuenta de vendedor está pendiente de aprobación. No puedes realizar operaciones de venta.',
                 'inactive' => 'Tu cuenta de vendedor está inactiva. Contacta al administrador.',
@@ -77,10 +77,10 @@ class SellerMiddleware
             ];
 
             $message = $statusMessages[$seller->status] ?? 'Tu cuenta de vendedor no está disponible';
-            
+
             // Agregar razón si existe
             if ($seller->status_reason) {
-                $message .= ' Motivo: ' . $seller->status_reason;
+                $message .= ' Motivo: '.$seller->status_reason;
             }
 
             return response()->json([
@@ -90,7 +90,7 @@ class SellerMiddleware
                 'status_reason' => $seller->status_reason ?? null,
             ], 403);
         }
-        
+
         // Para rutas de solo lectura con vendedor suspendido/inactivo, agregar flag
         if ($isReadOnlyRoute && $seller->status !== 'active') {
             $request->attributes->add([

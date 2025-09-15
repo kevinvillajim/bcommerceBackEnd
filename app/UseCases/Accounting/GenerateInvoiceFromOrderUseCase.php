@@ -2,13 +2,12 @@
 
 namespace App\UseCases\Accounting;
 
-use App\Models\Order;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
-use App\Models\Product;
+use App\Models\Order;
+use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 class GenerateInvoiceFromOrderUseCase
 {
@@ -41,21 +40,21 @@ class GenerateInvoiceFromOrderUseCase
 
                 // ✅ Generar número secuencial de factura con validación de duplicados
                 $invoiceNumber = $this->generateInvoiceNumber();
-                
+
                 // ✅ VALIDACIÓN ADICIONAL: Verificar que el número no esté en uso
                 $maxRetries = 3;
                 for ($retry = 0; $retry < $maxRetries; $retry++) {
-                    if (!Invoice::where('invoice_number', $invoiceNumber)->exists()) {
+                    if (! Invoice::where('invoice_number', $invoiceNumber)->exists()) {
                         break; // Número válido, continuar
                     }
-                    
+
                     Log::warning('Número de factura duplicado detectado, regenerando', [
                         'invoice_number' => $invoiceNumber,
-                        'retry' => $retry + 1
+                        'retry' => $retry + 1,
                     ]);
-                    
+
                     $invoiceNumber = $this->generateInvoiceNumber();
-                    
+
                     if ($retry === $maxRetries - 1) {
                         throw new Exception("No se pudo generar un número de factura único después de {$maxRetries} intentos");
                     }
@@ -67,13 +66,13 @@ class GenerateInvoiceFromOrderUseCase
                     'user_id' => $order->user_id,
                     'invoice_number' => $invoiceNumber,
                     'issue_date' => now(),
-                    
+
                     // ✅ Totales desde la orden (calculados por PricingCalculatorService)
                     'subtotal' => $order->subtotal_products, // Subtotal SIN IVA con descuentos aplicados
                     'tax_amount' => $order->iva_amount, // Monto del IVA 15%
                     'total_amount' => $order->total, // Total final CON IVA
                     'currency' => 'DOLAR',
-                    
+
                     // ✅ Datos del cliente (extraídos dinámicamente)
                     'customer_identification' => $customerData['identification'],
                     'customer_identification_type' => $customerData['identification_type'],
@@ -81,7 +80,7 @@ class GenerateInvoiceFromOrderUseCase
                     'customer_email' => $customerData['email'],
                     'customer_address' => $customerData['address'],
                     'customer_phone' => $customerData['phone'],
-                    
+
                     // ✅ Estado inicial
                     'status' => Invoice::STATUS_DRAFT,
                     'retry_count' => 0,
@@ -95,7 +94,7 @@ class GenerateInvoiceFromOrderUseCase
                     'invoice_id' => $invoice->id,
                     'invoice_number' => $invoiceNumber,
                     'order_id' => $order->id,
-                    'total_amount' => $invoice->total_amount
+                    'total_amount' => $invoice->total_amount,
                 ]);
 
                 return $invoice;
@@ -104,9 +103,9 @@ class GenerateInvoiceFromOrderUseCase
             Log::error('Error generando factura', [
                 'order_id' => $order->id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             throw $e;
         }
     }
@@ -123,18 +122,36 @@ class GenerateInvoiceFromOrderUseCase
         // ✅ Si use_same_address es false, usar billing_data
         // ✅ Si es true o no está definido, usar shipping_data
         $useSameAddress = $shippingData['use_same_address'] ?? true;
-        
+
+        // 🧾 LOG: Extrayendo datos de cliente para SRI
+        Log::info('🧾 SRI: Extrayendo datos de cliente', [
+            'order_id' => $order->id,
+            'has_billing_data' => !empty($order->billing_data),
+            'has_shipping_data' => !empty($order->shipping_data),
+            'use_same_address' => $useSameAddress,
+            'source_data_from' => $useSameAddress ? 'shipping' : 'billing'
+        ]);
+
         $sourceData = $useSameAddress ? $shippingData : $billingData;
 
         // ✅ Validar que tengamos identificación (crítico para SRI)
         if (empty($sourceData['identification'])) {
-            throw new Exception("No se puede generar factura: falta la cédula/RUC del cliente");
+            throw new Exception('No se puede generar factura: falta la cédula/RUC del cliente');
         }
 
         $identification = $sourceData['identification'];
-        
+
+        // 🧾 LOG: Confirmación de identificación extraída
+        Log::info('🧾 SRI: Identificación extraída exitosamente', [
+            'order_id' => $order->id,
+            'extracted_identification' => $identification,
+            'source_data_from' => $useSameAddress ? 'shipping' : 'billing',
+            'customer_name' => $sourceData['name'] ?? 'NO_NAME',
+            'customer_email' => $sourceData['email'] ?? 'NO_EMAIL'
+        ]);
+
         // ✅ Validar formato de identificación
-        if (!preg_match('/^\d{10}(\d{3})?$/', $identification)) {
+        if (! preg_match('/^\d{10}(\d{3})?$/', $identification)) {
             throw new Exception("Formato de cédula/RUC inválido: {$identification}");
         }
 
@@ -143,32 +160,32 @@ class GenerateInvoiceFromOrderUseCase
 
         // ✅ Construir dirección completa (sin postal_code si está vacío)
         $addressParts = [];
-        
-        if (!empty($sourceData['address'])) {
+
+        if (! empty($sourceData['address'])) {
             $addressParts[] = $sourceData['address'];
         }
-        
-        if (!empty($sourceData['city'])) {
+
+        if (! empty($sourceData['city'])) {
             $addressParts[] = $sourceData['city'];
         }
-        
-        if (!empty($sourceData['state'])) {
+
+        if (! empty($sourceData['state'])) {
             $addressParts[] = $sourceData['state'];
         }
-        
+
         // ✅ Solo agregar postal_code si NO está vacío
-        if (!empty($sourceData['postal_code'])) {
+        if (! empty($sourceData['postal_code'])) {
             $addressParts[] = $sourceData['postal_code'];
         }
-        
-        if (!empty($sourceData['country'])) {
+
+        if (! empty($sourceData['country'])) {
             $addressParts[] = $sourceData['country'];
         } else {
             $addressParts[] = 'Ecuador'; // Default
         }
 
         $address = implode(', ', $addressParts);
-        
+
         // ✅ Si no hay partes de dirección, usar texto por defecto
         if (empty($addressParts)) {
             $address = 'Sin dirección especificada';
@@ -176,7 +193,7 @@ class GenerateInvoiceFromOrderUseCase
 
         // ✅ Construir nombre completo: usar el campo 'name' que envía el frontend
         $fullName = $sourceData['name'] ?? '';
-        
+
         // ✅ Si no hay nombre en shipping_data, usar el nombre del usuario como fallback
         if (empty($fullName)) {
             $fullName = $userData->name ?? '';
@@ -186,7 +203,7 @@ class GenerateInvoiceFromOrderUseCase
         $email = $sourceData['email'] ?? $userData->email ?? '';
 
         if (empty($email)) {
-            throw new Exception("No se puede generar factura: falta el email del cliente");
+            throw new Exception('No se puede generar factura: falta el email del cliente');
         }
 
         return [
@@ -205,14 +222,14 @@ class GenerateInvoiceFromOrderUseCase
     private function determineIdentificationType(string $identification): string
     {
         $length = strlen($identification);
-        
+
         if ($length === 10) {
-            return "05"; // Cédula
-        } elseif ($length === 13 && substr($identification, -3) === "001") {
-            return "04"; // RUC
+            return '05'; // Cédula
+        } elseif ($length === 13 && substr($identification, -3) === '001') {
+            return '04'; // RUC
         }
-        
-        return "05"; // Default cédula
+
+        return '05'; // Default cédula
     }
 
     /**
@@ -223,9 +240,9 @@ class GenerateInvoiceFromOrderUseCase
         // ✅ CORRECCIÓN: Ordenamiento numérico en lugar de lexicográfico
         // Usar CAST para ordenar por valor numérico, no alfabéticamente
         $lastInvoice = Invoice::orderByRaw('CAST(invoice_number AS UNSIGNED) DESC')->first();
-        
-        if (!$lastInvoice) {
-            return "000000001"; // Primera factura
+
+        if (! $lastInvoice) {
+            return '000000001'; // Primera factura
         }
 
         // ✅ Incrementar secuencial
@@ -244,7 +261,7 @@ class GenerateInvoiceFromOrderUseCase
         $orderItems = $order->items()->with('product')->get();
 
         if ($orderItems->isEmpty()) {
-            throw new Exception("No se pueden crear items de factura: la orden no tiene productos");
+            throw new Exception('No se pueden crear items de factura: la orden no tiene productos');
         }
 
         foreach ($orderItems as $orderItem) {
@@ -262,8 +279,8 @@ class GenerateInvoiceFromOrderUseCase
             }
 
             $product = $orderItem->product;
-            
-            if (!$product) {
+
+            if (! $product) {
                 throw new Exception("Producto no encontrado para item de orden (producto ID: {$orderItem->product_id})");
             }
 
@@ -293,7 +310,7 @@ class GenerateInvoiceFromOrderUseCase
 
         Log::info('Items de factura creados', [
             'invoice_id' => $invoice->id,
-            'items_count' => $orderItems->count()
+            'items_count' => $orderItems->count(),
         ]);
     }
 }

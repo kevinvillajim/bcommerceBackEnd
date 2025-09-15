@@ -9,13 +9,13 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * 🧮 SERVICIO CENTRALIZADO DE CÁLCULOS DE PRICING
- * 
+ *
  * Este servicio es la ÚNICA fuente de verdad para todos los cálculos de pricing
  * en el sistema. Garantiza consistencia entre todos los flujos (Checkout, Deuna, Datafast).
- * 
+ *
  * SECUENCIA DE CÁLCULOS:
  * 1. Precio base (del producto)
- * 2. Descuento seller (% configurado en producto)  
+ * 2. Descuento seller (% configurado en producto)
  * 3. Descuento volumen (desde BD dinámica)
  * 4. Cupón descuento (5% sobre subtotal - OPCIONAL)
  * 5. Envío (configuración dinámica BD)
@@ -24,7 +24,9 @@ use Illuminate\Support\Facades\Log;
 class PricingCalculatorService
 {
     private ProductRepositoryInterface $productRepository;
+
     private ConfigurationService $configService;
+
     private ApplyCartDiscountCodeUseCase $applyCartDiscountCodeUseCase;
 
     public function __construct(
@@ -39,18 +41,18 @@ class PricingCalculatorService
 
     /**
      * 🎯 MÉTODO PRINCIPAL: Calcular totales completos del carrito
-     * 
-     * @param array $cartItems Items del carrito en formato estándar
-     * @param int $userId ID del usuario (para cupones)
-     * @param string|null $couponCode Código de cupón opcional
+     *
+     * @param  array  $cartItems  Items del carrito en formato estándar
+     * @param  int  $userId  ID del usuario (para cupones)
+     * @param  string|null  $couponCode  Código de cupón opcional
      * @return array Resultado completo con todos los cálculos
      */
     public function calculateCartTotals(
-        array $cartItems, 
+        array $cartItems,
         int $userId,
         ?string $couponCode = null
     ): array {
-        
+
         Log::info('🧮 PricingCalculatorService - INICIANDO cálculos centralizados', [
             'items_count' => count($cartItems),
             'user_id' => $userId,
@@ -59,19 +61,19 @@ class PricingCalculatorService
 
         // PASO 1: Procesar items individuales con descuentos seller + volumen
         $processedItems = $this->processItemsWithDiscounts($cartItems);
-        
+
         // PASO 2: Calcular subtotales básicos
         $subtotalData = $this->calculateSubtotals($processedItems);
-        
+
         // PASO 3: Aplicar cupón de descuento si existe
         $couponData = $this->applyCouponDiscount($processedItems, $subtotalData, $userId, $couponCode);
-        
+
         // PASO 4: Calcular envío con configuración dinámica de BD
         $shippingData = $this->calculateShipping($couponData['subtotal_after_coupon']);
-        
+
         // PASO 5: Calcular IVA sobre (subtotal + envío)
         $taxData = $this->calculateTax($couponData['subtotal_after_coupon'], $shippingData['shipping_cost']);
-        
+
         // PASO 6: Ensamblar resultado final
         $result = $this->assembleResult($processedItems, $subtotalData, $couponData, $shippingData, $taxData);
 
@@ -92,21 +94,21 @@ class PricingCalculatorService
     private function processItemsWithDiscounts(array $cartItems): array
     {
         $processedItems = [];
-        
+
         foreach ($cartItems as $item) {
             $productId = $item['product_id'] ?? $item['productId'] ?? null;
             $quantity = $item['quantity'] ?? 0;
-            
-            if (!$productId || $quantity <= 0) {
+
+            if (! $productId || $quantity <= 0) {
                 throw new \Exception("Item inválido: product_id={$productId}, quantity={$quantity}");
             }
-            
+
             // Obtener producto de BD
             $product = $this->productRepository->findById($productId);
-            if (!$product) {
+            if (! $product) {
                 throw new \Exception("Producto {$productId} no encontrado");
             }
-            
+
             // Calcular pricing completo del item
             $pricing = $this->calculateItemPricing(
                 $product->getPrice(),
@@ -114,7 +116,7 @@ class PricingCalculatorService
                 $quantity,
                 $product->getSellerId()
             );
-            
+
             $processedItems[] = [
                 'product_id' => $productId,
                 'seller_id' => $product->getSellerId(),
@@ -130,7 +132,7 @@ class PricingCalculatorService
                 'subtotal' => $pricing['final_price'] * $quantity, // Sin redondeo - frontend manejará
             ];
         }
-        
+
         return $processedItems;
     }
 
@@ -143,7 +145,7 @@ class PricingCalculatorService
         int $quantity,
         int $sellerId
     ): array {
-        
+
         // PASO 1: Aplicar descuento del seller
         $sellerDiscountAmount = $originalPrice * ($sellerDiscountPercentage / 100);
         $sellerDiscountedPrice = $originalPrice - $sellerDiscountAmount;
@@ -163,7 +165,7 @@ class PricingCalculatorService
             'volume_discount_percentage' => $volumeDiscountPercentage,
             'final_price' => $finalPrice, // Sin redondeo - frontend manejará
             'seller_discount_amount' => $sellerDiscountAmount, // Sin redondeo - frontend manejará
-            'volume_discount_amount' => $volumeDiscountAmount, // Sin redondeo - frontend manejará  
+            'volume_discount_amount' => $volumeDiscountAmount, // Sin redondeo - frontend manejará
             'total_discount_amount' => $totalDiscountAmount, // Sin redondeo - frontend manejará
         ];
     }
@@ -175,18 +177,18 @@ class PricingCalculatorService
     {
         // ✅ COMPLETAMENTE DINÁMICO: Verificar que esté habilitado desde BD
         $enabled = $this->configService->getConfig('volume_discounts.enabled');
-        
+
         if ($enabled === null) {
             throw new \Exception('Configuración volume_discounts.enabled requerida en BD');
         }
-        
-        if (!$enabled) {
+
+        if (! $enabled) {
             return 0.0;
         }
-        
+
         // ✅ COMPLETAMENTE DINÁMICO: Obtener tiers SOLO desde BD, sin fallback hardcoded
         $defaultTiers = $this->configService->getConfig('volume_discounts.default_tiers');
-        
+
         // 🔧 CORREGIDO: Verificar si ya es array o si es string JSON
         if (is_array($defaultTiers)) {
             $tiers = $defaultTiers;
@@ -195,20 +197,20 @@ class PricingCalculatorService
         } else {
             $tiers = null;
         }
-        
-        if (!is_array($tiers) || empty($tiers)) {
+
+        if (! is_array($tiers) || empty($tiers)) {
             Log::error('❌ Volume discount tiers no disponibles en BD - Sistema requiere configuración válida', [
-                'tiers' => $defaultTiers, 
-                'type' => gettype($defaultTiers)
+                'tiers' => $defaultTiers,
+                'type' => gettype($defaultTiers),
             ]);
             throw new \Exception('Sistema requiere configuración válida de descuentos por volumen en BD');
         }
-        
+
         // Ordenar tiers de menor a mayor cantidad para aplicar el tier más alto disponible
-        usort($tiers, function($a, $b) {
+        usort($tiers, function ($a, $b) {
             return ($a['quantity'] ?? 0) - ($b['quantity'] ?? 0);
         });
-        
+
         // Encontrar el tier aplicable (el más alto que califica)
         $applicableTier = null;
         foreach ($tiers as $tier) {
@@ -216,11 +218,11 @@ class PricingCalculatorService
                 $applicableTier = $tier;
             }
         }
-        
+
         if ($applicableTier) {
             return (float) ($applicableTier['discount'] ?? 0) / 100; // ✅ CORREGIDO: Convertir porcentaje a decimal
         }
-        
+
         return 0.0;
     }
 
@@ -261,13 +263,13 @@ class PricingCalculatorService
      * 🎫 PASO 3: Aplicar cupón de descuento (opcional)
      */
     private function applyCouponDiscount(
-        array $processedItems, 
-        array $subtotalData, 
-        int $userId, 
+        array $processedItems,
+        array $subtotalData,
+        int $userId,
         ?string $couponCode
     ): array {
-        
-        if (!$couponCode) {
+
+        if (! $couponCode) {
             return [
                 'subtotal_after_coupon' => $subtotalData['subtotal_with_discounts'],
                 'coupon_discount' => 0,
@@ -278,20 +280,20 @@ class PricingCalculatorService
         try {
             // Convertir items al formato esperado por ApplyCartDiscountCodeUseCase
             $cartItemsForCoupon = $this->convertItemsForCouponValidation($processedItems);
-            
+
             $discountResult = $this->applyCartDiscountCodeUseCase->execute($couponCode, $cartItemsForCoupon, $userId);
-            
+
             if ($discountResult['success']) {
                 $discountInfo = $discountResult['data']['discount_code'];
                 $discountAmount = $discountInfo['discount_amount'] ?? 0;
-                
+
                 return [
                     'subtotal_after_coupon' => $subtotalData['subtotal_with_discounts'] - $discountAmount, // Sin redondeo - frontend manejará
                     'coupon_discount' => $discountAmount, // Sin redondeo - frontend manejará
                     'coupon_info' => $discountInfo,
                 ];
             } else {
-                throw new \Exception('Cupón inválido: ' . ($discountResult['message'] ?? 'Error desconocido'));
+                throw new \Exception('Cupón inválido: '.($discountResult['message'] ?? 'Error desconocido'));
             }
         } catch (\Exception $e) {
             Log::error('Error aplicando cupón de descuento', [
@@ -312,13 +314,13 @@ class PricingCalculatorService
         $enabled = $this->configService->getConfig('shipping.enabled');
         $freeThreshold = $this->configService->getConfig('shipping.free_threshold');
         $defaultCost = $this->configService->getConfig('shipping.default_cost');
-        
+
         // Validar que la configuración existe
         if ($enabled === null || $freeThreshold === null || $defaultCost === null) {
             throw new \Exception('Configuración de envío requerida no encontrada en BD');
         }
 
-        if (!$enabled) {
+        if (! $enabled) {
             return [
                 'shipping_cost' => 0,
                 'free_shipping' => true,
@@ -343,16 +345,16 @@ class PricingCalculatorService
     {
         // ✅ COMPLETAMENTE DINÁMICO: Con fallback seguro 15% para Ecuador
         $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
-        
+
         // Log para debug en caso de problemas
         \Log::info('PricingCalculatorService: Tax rate obtenido', [
             'tax_rate_percentage' => $taxRatePercentage,
             'subtotal' => $subtotal,
-            'shipping_cost' => $shippingCost
+            'shipping_cost' => $shippingCost,
         ]);
-        
+
         $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
-        
+
         $taxableAmount = $subtotal + $shippingCost;
         $taxAmount = $taxableAmount * $taxRate;
 
@@ -373,39 +375,39 @@ class PricingCalculatorService
         array $shippingData,
         array $taxData
     ): array {
-        
+
         $finalTotal = $couponData['subtotal_after_coupon'] + $shippingData['shipping_cost'] + $taxData['tax_amount']; // Sin redondeo - frontend manejará
         $totalDiscounts = $subtotalData['total_discounts'] + $couponData['coupon_discount']; // Sin redondeo - frontend manejará
 
         return [
             // Items procesados
             'processed_items' => $processedItems,
-            
+
             // Subtotales
             'subtotal_original' => $subtotalData['subtotal_original'],
             'subtotal_with_discounts' => $subtotalData['subtotal_with_discounts'],
             'subtotal_after_coupon' => $couponData['subtotal_after_coupon'],
-            
+
             // Descuentos desglosados
             'seller_discounts' => $subtotalData['seller_discounts'],
             'volume_discounts' => $subtotalData['volume_discounts'],
             'coupon_discount' => $couponData['coupon_discount'],
             'total_discounts' => $totalDiscounts, // Sin redondeo - frontend manejará
-            
+
             // Envío e IVA
             'shipping_cost' => $shippingData['shipping_cost'],
             'free_shipping' => $shippingData['free_shipping'],
             'free_shipping_threshold' => $shippingData['free_shipping_threshold'],
             'iva_amount' => $taxData['tax_amount'],
             'tax_rate' => $taxData['tax_rate'],
-            
+
             // Total final
             'final_total' => round($finalTotal, 2),
-            
+
             // Información adicional
             'coupon_info' => $couponData['coupon_info'],
             'volume_discounts_applied' => $subtotalData['volume_discounts'] > 0,
-            
+
             // Para compatibilidad con ProcessCheckoutUseCase
             'pricing_breakdown' => [
                 'subtotal' => $couponData['subtotal_after_coupon'],
@@ -442,6 +444,7 @@ class PricingCalculatorService
                 'attributes' => [],
             ];
         }
+
         return $cartItems;
     }
 }

@@ -35,12 +35,12 @@ class ConfigurationVersionController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $versions,
-                'timestamp' => time()
+                'timestamp' => time(),
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al obtener versiones de configuración'
+                'message' => 'Error al obtener versiones de configuración',
             ], 500);
         }
     }
@@ -58,13 +58,13 @@ class ConfigurationVersionController extends Controller
                 'data' => [
                     'config_type' => $configType,
                     'version' => $version,
-                    'timestamp' => time()
-                ]
+                    'timestamp' => time(),
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error al obtener versión de configuración'
+                'message' => 'Error al obtener versión de configuración',
             ], 500);
         }
     }

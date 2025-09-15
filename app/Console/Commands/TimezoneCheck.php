@@ -31,20 +31,20 @@ class TimezoneCheck extends Command
     {
         $this->info('🇪🇨 Ecuador Timezone Configuration Check');
         $this->info('=====================================');
-        
+
         // Show system configuration
         $this->showSystemConfiguration();
-        
+
         // Show current times
         $this->showCurrentTimes();
-        
+
         if ($this->option('test')) {
             $this->showTestTimestamps();
         }
-        
+
         // Show recent orders with timestamps
         $this->showRecentOrders();
-        
+
         return Command::SUCCESS;
     }
 
@@ -64,7 +64,7 @@ class TimezoneCheck extends Command
         $now = Carbon::now();
         $utcNow = Carbon::now('UTC');
         $ecuadorNow = EcuadorTimeService::now();
-        
+
         $this->info("\n🕐 Current Times:");
         $this->table(['Timezone', 'Time', 'Offset'], [
             ['System Default', $now->format('Y-m-d H:i:s P'), $now->format('P')],
@@ -76,13 +76,13 @@ class TimezoneCheck extends Command
     private function showTestTimestamps()
     {
         $this->info("\n🧪 Test Timestamp Conversions:");
-        
+
         $testDate = '2025-08-26 14:30:00'; // UTC time
-        
+
         $utc = Carbon::parse($testDate, 'UTC');
         $ecuador = EcuadorTimeService::toEcuadorTime($utc);
         $friendly = EcuadorTimeService::formatFriendly($utc);
-        
+
         $this->table(['Format', 'Value'], [
             ['Original UTC', $utc->format('Y-m-d H:i:s P')],
             ['Ecuador Time', $ecuador->format('Y-m-d H:i:s P')],
@@ -94,12 +94,13 @@ class TimezoneCheck extends Command
     private function showRecentOrders()
     {
         $this->info("\n📦 Recent Orders Timestamps:");
-        
+
         // Get recent orders
         $orders = Order::latest()->take(3)->get();
-        
+
         if ($orders->isEmpty()) {
             $this->warn('No orders found in database');
+
             return;
         }
 
@@ -121,10 +122,10 @@ class TimezoneCheck extends Command
 
         // Show seller orders too
         $sellerOrders = SellerOrder::latest()->take(3)->get();
-        
-        if (!$sellerOrders->isEmpty()) {
+
+        if (! $sellerOrders->isEmpty()) {
             $this->info("\n👨‍💼 Recent Seller Orders Timestamps:");
-            
+
             $sellerTableData = [];
             foreach ($sellerOrders as $sellerOrder) {
                 $sellerTableData[] = [
@@ -143,6 +144,6 @@ class TimezoneCheck extends Command
         }
 
         $this->info("\n✅ All timestamps are now using Ecuador timezone (UTC-5)");
-        $this->info("💡 Use EcuadorTimeService::formatFriendly() for user-facing dates");
+        $this->info('💡 Use EcuadorTimeService::formatFriendly() for user-facing dates');
     }
 }

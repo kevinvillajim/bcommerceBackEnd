@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\User;
 use App\Models\Admin;
 use App\Models\Configuration;
+use App\Models\User;
 use App\Services\ConfigurationService;
 use App\Services\PricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,22 +15,24 @@ class ShippingConfigurationTest extends TestCase
     // use RefreshDatabase; // REMOVED - No borrar datos de producción
 
     private $adminUser;
+
     private $configService;
+
     private $pricingService;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         // Create admin user with admin relationship
         $this->adminUser = User::factory()->create([
-            'email' => 'admin@test.com'
+            'email' => 'admin@test.com',
         ]);
 
         // Create admin profile for the user
         Admin::create([
             'user_id' => $this->adminUser->id,
-            'status' => 'active'
+            'status' => 'active',
         ]);
 
         $this->configService = app(ConfigurationService::class);
@@ -55,7 +57,7 @@ class ShippingConfigurationTest extends TestCase
                     'enabled' => true,
                     'free_threshold' => 50.00,
                     'default_cost' => 5.00,
-                ]
+                ],
             ]);
     }
 
@@ -73,7 +75,7 @@ class ShippingConfigurationTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJson([
-                'status' => 'success'
+                'status' => 'success',
             ]);
 
         // Verify the configuration was saved
@@ -99,7 +101,7 @@ class ShippingConfigurationTest extends TestCase
                 'price' => 25.00,
                 'base_price' => 25.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -127,7 +129,7 @@ class ShippingConfigurationTest extends TestCase
                 'price' => 30.00,
                 'base_price' => 30.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -154,7 +156,7 @@ class ShippingConfigurationTest extends TestCase
                 'price' => 10.00,
                 'base_price' => 10.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -199,7 +201,7 @@ class ShippingConfigurationTest extends TestCase
                 'price' => 50.00,
                 'base_price' => 50.00,
                 'discount_percentage' => 0,
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -226,7 +228,7 @@ class ShippingConfigurationTest extends TestCase
                 'price' => 30.00,
                 'base_price' => 50.00, // Original price is 50, discounted to 30
                 'discount_percentage' => 40, // 40% discount
-            ]
+            ],
         ];
 
         $result = $this->pricingService->calculateCheckoutTotals($cartItems);
@@ -240,7 +242,7 @@ class ShippingConfigurationTest extends TestCase
     public function non_admin_cannot_access_shipping_configuration()
     {
         $regularUser = User::factory()->create([
-            'email' => 'user@test.com'
+            'email' => 'user@test.com',
         ]);
 
         $response = $this->actingAs($regularUser)

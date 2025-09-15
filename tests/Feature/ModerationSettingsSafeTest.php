@@ -72,7 +72,6 @@ class ModerationSettingsSafeTest extends TestCase
         $this->assertEquals($moderationConfigs['numbers_with_context_limit'], $responseData['numbers_with_context_limit']);
         $this->assertEquals($moderationConfigs['low_stock_threshold'], $responseData['low_stock_threshold']);
 
-
         // TEST 2: Verificar estructura de actualización de moderation
 
         $updatedModerationConfigs = [
@@ -102,7 +101,6 @@ class ModerationSettingsSafeTest extends TestCase
             $this->assertArrayHasKey($key, $updatedModerationConfigs, "Missing key: {$key}");
         }
 
-
         // TEST 3: Verificar tipos de datos específicos
 
         $typeTestConfigs = [
@@ -121,7 +119,6 @@ class ModerationSettingsSafeTest extends TestCase
         foreach ($typeTestConfigs as $key => $value) {
             $this->assertIsInt($value, "Expected int for {$key}");
         }
-
 
         // TEST 4: Verificar rangos de configuración
 
@@ -164,7 +161,6 @@ class ModerationSettingsSafeTest extends TestCase
 
         $this->assertGreaterThanOrEqual(1, $rangeConfigs['low_stock_threshold']);
         $this->assertLessThanOrEqual(50, $rangeConfigs['low_stock_threshold']);
-
 
         // TEST 5: Verificar lógica de negocio de moderación
 

@@ -1,22 +1,20 @@
 <?php
 
-require_once __DIR__ . '/vendor/autoload.php';
-
-use Illuminate\Foundation\Application;
+require_once __DIR__.'/vendor/autoload.php';
 
 // Bootstrap Laravel
-$app = require_once __DIR__ . '/bootstrap/app.php';
+$app = require_once __DIR__.'/bootstrap/app.php';
 $kernel = $app->make('Illuminate\Contracts\Console\Kernel');
 $kernel->bootstrap();
 
 // Test email sending functionality
 echo "🧪 Testing Admin Email Sending Functionality\n";
-echo "=" . str_repeat("=", 50) . "\n";
+echo '='.str_repeat('=', 50)."\n";
 
 try {
     // Find admin user
     $admin = \App\Models\User::where('is_admin', true)->first();
-    if (!$admin) {
+    if (! $admin) {
         echo "❌ No admin user found. Creating one...\n";
         $admin = \App\Models\User::create([
             'name' => 'Test Admin',
@@ -32,12 +30,12 @@ try {
 
     // Find or create Kevin
     $kevin = \App\Models\User::where('email', 'kevinvillajim@hotmail.com')->first();
-    if (!$kevin) {
+    if (! $kevin) {
         echo "❌ Kevin user not found. Creating one...\n";
         $kevin = \App\Models\User::create([
             'name' => 'Kevin Villacreses',
             'first_name' => 'Kevin',
-            'last_name' => 'Villacreses', 
+            'last_name' => 'Villacreses',
             'email' => 'kevinvillajim@hotmail.com',
             'password' => bcrypt('password'),
             'email_verified_at' => now(),
@@ -49,9 +47,9 @@ try {
 
     // Test MailService
     echo "\n📧 Testing email sending...\n";
-    
+
     $mailService = app(\App\Services\MailService::class);
-    
+
     $subject = '🧪 Test Email - BCommerce Admin Panel';
     $message = '¡Hola Kevin! Este es un email de prueba desde el script de testing de BCommerce. Si recibes este email, significa que:
 
@@ -75,7 +73,7 @@ Sistema de Testing BCommerce';
             'sent_by_admin' => true,
             'admin_name' => $admin->name,
             'admin_email' => $admin->email,
-            'test_mode' => true
+            'test_mode' => true,
         ]
     );
 
@@ -91,10 +89,10 @@ Sistema de Testing BCommerce';
     }
 
 } catch (\Exception $e) {
-    echo "💥 ERROR: " . $e->getMessage() . "\n";
-    echo "📄 File: " . $e->getFile() . ":" . $e->getLine() . "\n";
-    echo "🔍 Trace:\n" . $e->getTraceAsString() . "\n";
+    echo '💥 ERROR: '.$e->getMessage()."\n";
+    echo '📄 File: '.$e->getFile().':'.$e->getLine()."\n";
+    echo "🔍 Trace:\n".$e->getTraceAsString()."\n";
 }
 
-echo "\n" . str_repeat("=", 60) . "\n";
+echo "\n".str_repeat('=', 60)."\n";
 echo "🏁 Test completed\n";

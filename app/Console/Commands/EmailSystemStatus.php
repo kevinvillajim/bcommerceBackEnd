@@ -45,9 +45,9 @@ class EmailSystemStatus extends Command
         if ($this->option('test')) {
             $this->line('');
             $this->info('🔍 Testing SMTP Connection...');
-            
+
             $result = $mailManager->testConnection();
-            
+
             if ($result['status'] === 'success') {
                 $this->info('✅ SMTP connection successful!');
                 if (isset($result['details'])) {
@@ -57,7 +57,8 @@ class EmailSystemStatus extends Command
                     }
                 }
             } else {
-                $this->error('❌ SMTP connection failed: ' . $result['message']);
+                $this->error('❌ SMTP connection failed: '.$result['message']);
+
                 return 1;
             }
         }
@@ -66,19 +67,19 @@ class EmailSystemStatus extends Command
         if ($this->option('templates')) {
             $this->line('');
             $this->info('📄 Available Email Templates:');
-            
+
             $templates = $mailManager->getAvailableTemplates();
             $templateData = [];
-            
+
             foreach ($templates as $key => $template) {
                 $templateData[] = [
                     $key,
                     $template['name'],
                     $template['template'],
-                    class_basename($template['mailable'])
+                    class_basename($template['mailable']),
                 ];
             }
-            
+
             $this->table(
                 ['Key', 'Name', 'Template Path', 'Mailable Class'],
                 $templateData

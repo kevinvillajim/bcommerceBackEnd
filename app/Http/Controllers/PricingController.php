@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Validator;
 
 /**
  * 🧮 CONTROLADOR DE CÁLCULOS DE PRICING
- * 
+ *
  * Proporciona endpoints para calcular totales de manera centralizada
  * desde el frontend y otros sistemas
  */
@@ -26,11 +26,8 @@ class PricingController extends Controller
 
     /**
      * 🎯 Calcular totales del carrito de manera centralizada
-     * 
+     *
      * POST /api/calculate-totals
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function calculateTotals(Request $request): JsonResponse
     {
@@ -52,7 +49,7 @@ class PricingController extends Controller
             }
 
             $data = $validator->validated();
-            
+
             /** @var \App\Models\User $user */
             $user = $request->user();
             $userId = $user->id;
@@ -78,24 +75,24 @@ class PricingController extends Controller
                     'subtotal_with_discounts' => $result['subtotal_with_discounts'],
                     'subtotal_after_coupon' => $result['subtotal_after_coupon'],
                     'final_total' => $result['final_total'],
-                    
+
                     // Descuentos desglosados
                     'seller_discounts' => $result['seller_discounts'],
                     'volume_discounts' => $result['volume_discounts'],
                     'coupon_discount' => $result['coupon_discount'],
                     'total_discounts' => $result['total_discounts'],
-                    
+
                     // Envío e IVA
                     'shipping_cost' => $result['shipping_cost'],
                     'free_shipping' => $result['free_shipping'],
                     'free_shipping_threshold' => $result['free_shipping_threshold'],
                     'iva_amount' => $result['iva_amount'],
                     'tax_rate' => $result['tax_rate'],
-                    
+
                     // Información adicional
                     'volume_discounts_applied' => $result['volume_discounts_applied'],
                     'coupon_info' => $result['coupon_info'],
-                    
+
                     // Items procesados (para debug)
                     'processed_items' => $result['processed_items'],
                 ],
@@ -111,18 +108,15 @@ class PricingController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error calculando totales: ' . $e->getMessage(),
+                'message' => 'Error calculando totales: '.$e->getMessage(),
             ], 500);
         }
     }
 
     /**
      * 🔍 Validar totales enviados desde el frontend
-     * 
+     *
      * POST /api/validate-totals
-     * 
-     * @param Request $request
-     * @return JsonResponse
      */
     public function validateTotals(Request $request): JsonResponse
     {
@@ -148,7 +142,7 @@ class PricingController extends Controller
             }
 
             $data = $validator->validated();
-            
+
             /** @var \App\Models\User $user */
             $user = $request->user();
             $userId = $user->id;
@@ -161,24 +155,24 @@ class PricingController extends Controller
             );
 
             $frontendTotals = $data['frontend_totals'];
-            
+
             // Comparar totales con tolerancia de $0.01 para redondeo
             $tolerance = 0.01;
             $discrepancies = [];
-            
+
             $fieldsToCompare = [
                 'final_total' => 'final_total',
-                'subtotal_original' => 'subtotal_original', 
+                'subtotal_original' => 'subtotal_original',
                 'total_discounts' => 'total_discounts',
                 'iva_amount' => 'iva_amount',
                 'shipping_cost' => 'shipping_cost',
             ];
-            
+
             foreach ($fieldsToCompare as $frontendField => $backendField) {
                 $frontendValue = (float) ($frontendTotals[$frontendField] ?? 0);
                 $backendValue = (float) ($backendResult[$backendField] ?? 0);
                 $difference = abs($frontendValue - $backendValue);
-                
+
                 if ($difference > $tolerance) {
                     $discrepancies[] = [
                         'field' => $frontendField,
@@ -188,7 +182,7 @@ class PricingController extends Controller
                     ];
                 }
             }
-            
+
             $isValid = empty($discrepancies);
 
             Log::info('🔍 Validación de totales frontend vs backend', [
@@ -224,7 +218,7 @@ class PricingController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error validando totales: ' . $e->getMessage(),
+                'message' => 'Error validando totales: '.$e->getMessage(),
             ], 500);
         }
     }

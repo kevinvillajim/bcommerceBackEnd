@@ -62,7 +62,6 @@ class SecuritySettingsSafeTest extends TestCase
         $this->assertEquals($securityConfigs['adminIpRestriction'], $responseData['adminIpRestriction']);
         $this->assertEquals($securityConfigs['enableCaptcha'], $responseData['enableCaptcha']);
 
-
         // TEST 2: Verificar estructura de actualización de security
 
         $updatedSecurityConfigs = [
@@ -93,7 +92,6 @@ class SecuritySettingsSafeTest extends TestCase
             $this->assertArrayHasKey($key, $updatedSecurityConfigs, "Missing key: {$key}");
         }
 
-
         // TEST 3: Verificar tipos de datos específicos
 
         $typeTestConfigs = [
@@ -121,7 +119,6 @@ class SecuritySettingsSafeTest extends TestCase
         $this->assertIsString($typeTestConfigs['adminIpRestriction'], 'Expected string for adminIpRestriction');
         $this->assertIsBool($typeTestConfigs['enableCaptcha'], 'Expected boolean for enableCaptcha');
 
-
         // TEST 4: Verificar casos edge de seguridad
 
         $edgeConfigs = [
@@ -142,7 +139,6 @@ class SecuritySettingsSafeTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $edgeConfigs['accountLockAttempts'], 'Account lock attempts should be at least 1');
         $this->assertLessThanOrEqual(2880, $edgeConfigs['sessionTimeout'], 'Session timeout should not exceed 48 hours');
         $this->assertIsString($edgeConfigs['adminIpRestriction'], 'Admin IP restriction should be string');
-
 
         // TEST 5: Verificar validación de reglas de contraseña
 
@@ -175,7 +171,6 @@ class SecuritySettingsSafeTest extends TestCase
         $this->assertTrue($rules['requireSpecial']);
         $this->assertFalse($rules['requireUppercase']);
         $this->assertTrue($rules['requireNumbers']);
-
 
         $this->assertTrue(true);
     }

@@ -2,8 +2,8 @@
 
 namespace App\UseCases\Cart;
 
-use App\Models\DiscountCode;
 use App\Models\AdminDiscountCode;
+use App\Models\DiscountCode;
 use App\Services\PricingService;
 
 class ApplyCartDiscountCodeUseCase
@@ -22,7 +22,6 @@ class ApplyCartDiscountCodeUseCase
     {
         // 🔧 CORREGIDO: Buscar el código tanto en feedback como en admin discount codes
         $discountCode = $this->findDiscountCode($code);
-
 
         if (! $discountCode) {
             return [
@@ -80,7 +79,7 @@ class ApplyCartDiscountCodeUseCase
         // Obtener el rate de IVA desde configuración
         $taxRatePercentage = 15.0; // Podemos usar el valor por defecto ya que ya está configurado en BD
         $taxRate = $taxRatePercentage / 100;
-        
+
         // Base gravable = subtotal después de descuentos + envío
         $baseGravable = $newSubtotal + $shippingCost;
         $newIvaAmount = $baseGravable * $taxRate;

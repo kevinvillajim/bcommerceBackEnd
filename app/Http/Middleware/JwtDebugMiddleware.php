@@ -19,8 +19,9 @@ class JwtDebugMiddleware
         Log::info('JWT Configuration Debug', [
             'jwt.ttl' => config('jwt.ttl'),
             'jwt.ttl_type' => gettype(config('jwt.ttl')),
-            'env_jwt_ttl' => env('JWT_TTL'),
-            'env_jwt_ttl_type' => gettype(env('JWT_TTL')),
+            'session_timeout_minutes' => env('SESSION_TIMEOUT_MINUTES'),
+            'session_timeout_config' => config('session_timeout.ttl'),
+            'centralized_source' => 'session_timeout.php',
         ]);
 
         // Additional debug for request

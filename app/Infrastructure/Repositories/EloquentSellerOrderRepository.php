@@ -4,7 +4,6 @@ namespace App\Infrastructure\Repositories;
 
 use App\Domain\Entities\SellerOrderEntity;
 use App\Domain\Repositories\SellerOrderRepositoryInterface;
-use App\Models\OrderItem;
 use App\Models\SellerOrder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,12 +18,13 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
         if ($shippingData === null) {
             return null;
         }
-        
+
         if (is_string($shippingData)) {
             $decoded = json_decode($shippingData, true);
+
             return is_array($decoded) ? $decoded : null;
         }
-        
+
         return is_array($shippingData) ? $shippingData : null;
     }
 
@@ -146,7 +146,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             $sellerOrder->updated_at->format('Y-m-d H:i:s'),
             $items,
             null, // originalTotal
-            0.0, // volumeDiscountSavings  
+            0.0, // volumeDiscountSavings
             false, // volumeDiscountsApplied
             0.0, // shippingCost
             $sellerOrder->payment_status ?? 'pending',
@@ -195,7 +195,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $sellerOrder->updated_at->format('Y-m-d H:i:s'),
                 $items,
                 null, // originalTotal
-                0.0, // volumeDiscountSavings  
+                0.0, // volumeDiscountSavings
                 false, // volumeDiscountsApplied
                 0.0, // shippingCost
                 $sellerOrder->payment_status ?? 'pending',
@@ -251,7 +251,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $sellerOrder->updated_at->format('Y-m-d H:i:s'),
                 $items,
                 null, // originalTotal
-                0.0, // volumeDiscountSavings  
+                0.0, // volumeDiscountSavings
                 false, // volumeDiscountsApplied
                 0.0, // shippingCost
                 $sellerOrder->payment_status ?? 'pending',
@@ -334,7 +334,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $sellerOrder->updated_at->format('Y-m-d H:i:s'),
                 $items,
                 null, // originalTotal
-                0.0, // volumeDiscountSavings  
+                0.0, // volumeDiscountSavings
                 false, // volumeDiscountsApplied
                 0.0, // shippingCost
                 $sellerOrder->payment_status ?? 'pending',
@@ -353,7 +353,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             $mainOrder = \App\Models\Order::find($sellerOrderEntity->getOrderId());
             $paymentStatus = $mainOrder ? $mainOrder->payment_status : 'pending';
             $paymentMethod = $mainOrder ? $mainOrder->payment_method : 'datafast';
-            
+
             $sellerOrder = new SellerOrder;
             $sellerOrder->order_id = $sellerOrderEntity->getOrderId();
             $sellerOrder->seller_id = $sellerOrderEntity->getSellerId();
@@ -363,13 +363,13 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             $sellerOrder->payment_method = $paymentMethod;
             $sellerOrder->shipping_data = $sellerOrderEntity->getShippingData();
             $sellerOrder->order_number = $sellerOrderEntity->getOrderNumber();
-            
+
             // ✅ CRÍTICO: Guardar campos de pricing que estaban faltando
             $sellerOrder->original_total = $sellerOrderEntity->getOriginalTotal();
             $sellerOrder->volume_discount_savings = $sellerOrderEntity->getVolumeDiscountSavings();
             $sellerOrder->volume_discounts_applied = $sellerOrderEntity->getVolumeDiscountsApplied();
             $sellerOrder->shipping_cost = $sellerOrderEntity->getShippingCost();
-            
+
             $sellerOrder->save();
 
             // ✅ CORREGIDO: SellerOrderRepository NO debe crear OrderItems
@@ -390,7 +390,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $sellerOrder->updated_at->format('Y-m-d H:i:s'),
                 $savedItems,
                 null, // originalTotal
-                0.0, // volumeDiscountSavings  
+                0.0, // volumeDiscountSavings
                 false, // volumeDiscountsApplied
                 0.0, // shippingCost
                 $sellerOrder->payment_status ?? 'pending',
@@ -411,7 +411,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
             }
 
             // Obtener información de pago de la orden principal si es una nueva seller_order
-            if (!$sellerOrderEntity->getId()) {
+            if (! $sellerOrderEntity->getId()) {
                 $mainOrder = \App\Models\Order::find($sellerOrderEntity->getOrderId());
                 $paymentStatus = $mainOrder ? $mainOrder->payment_status : 'pending';
                 $paymentMethod = $mainOrder ? $mainOrder->payment_method : 'datafast';
@@ -420,7 +420,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $paymentStatus = $sellerOrder->payment_status;
                 $paymentMethod = $sellerOrder->payment_method;
             }
-            
+
             $sellerOrder->order_id = $sellerOrderEntity->getOrderId();
             $sellerOrder->seller_id = $sellerOrderEntity->getSellerId();
             $sellerOrder->total = $sellerOrderEntity->getTotal();
@@ -451,7 +451,7 @@ class EloquentSellerOrderRepository implements SellerOrderRepositoryInterface
                 $sellerOrder->updated_at->format('Y-m-d H:i:s'),
                 $savedItems,
                 null, // originalTotal
-                0.0, // volumeDiscountSavings  
+                0.0, // volumeDiscountSavings
                 false, // volumeDiscountsApplied
                 0.0, // shippingCost
                 $sellerOrder->payment_status ?? 'pending',

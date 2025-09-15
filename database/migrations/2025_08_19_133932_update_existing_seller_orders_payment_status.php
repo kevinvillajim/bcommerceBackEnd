@@ -1,8 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
@@ -14,7 +12,7 @@ return new class extends Migration
     {
         // Verificar si estamos usando SQLite
         $driver = DB::getDriverName();
-        
+
         if ($driver === 'sqlite') {
             // Para SQLite usar subconsulta en lugar de JOIN
             DB::statement("
@@ -54,7 +52,7 @@ return new class extends Migration
         // Revertir a valores por defecto
         DB::table('seller_orders')->update([
             'payment_status' => 'pending',
-            'payment_method' => null
+            'payment_method' => null,
         ]);
     }
 };

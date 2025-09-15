@@ -6,11 +6,9 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-use App\Services\MailService;
-use App\Services\Mail\MailManager;
-use App\Services\ConfigurationService;
 use App\Models\User;
-use Illuminate\Support\Facades\Log;
+use App\Services\ConfigurationService;
+use App\Services\MailService;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -19,14 +17,14 @@ echo "\n=== DEBUG MAIL CONFIGURATION ISSUE ===\n";
 
 // 1. Check mail configuration from .env
 echo "\n1. Mail Configuration from .env:\n";
-echo "   MAIL_MAILER: " . env('MAIL_MAILER') . "\n";
-echo "   MAIL_HOST: " . env('MAIL_HOST') . "\n";
-echo "   MAIL_PORT: " . env('MAIL_PORT') . "\n";
-echo "   MAIL_USERNAME: " . env('MAIL_USERNAME') . "\n";
-echo "   MAIL_ENCRYPTION: " . env('MAIL_ENCRYPTION') . "\n";
-echo "   MAIL_FROM_ADDRESS: " . env('MAIL_FROM_ADDRESS') . "\n";
-echo "   MAIL_FROM_NAME: " . env('MAIL_FROM_NAME') . "\n";
-echo "   QUEUE_CONNECTION: " . env('QUEUE_CONNECTION') . "\n";
+echo '   MAIL_MAILER: '.env('MAIL_MAILER')."\n";
+echo '   MAIL_HOST: '.env('MAIL_HOST')."\n";
+echo '   MAIL_PORT: '.env('MAIL_PORT')."\n";
+echo '   MAIL_USERNAME: '.env('MAIL_USERNAME')."\n";
+echo '   MAIL_ENCRYPTION: '.env('MAIL_ENCRYPTION')."\n";
+echo '   MAIL_FROM_ADDRESS: '.env('MAIL_FROM_ADDRESS')."\n";
+echo '   MAIL_FROM_NAME: '.env('MAIL_FROM_NAME')."\n";
+echo '   QUEUE_CONNECTION: '.env('QUEUE_CONNECTION')."\n";
 
 // 2. Check database configuration
 echo "\n2. Mail Configuration from Database:\n";
@@ -43,18 +41,18 @@ $dbConfigs = [
 ];
 
 foreach ($dbConfigs as $key => $value) {
-    echo "   $key: " . ($value ?? 'NOT SET') . "\n";
+    echo "   $key: ".($value ?? 'NOT SET')."\n";
 }
 
 // 3. Check Laravel's runtime configuration
 echo "\n3. Laravel Runtime Mail Configuration:\n";
-echo "   Default mailer: " . Config::get('mail.default') . "\n";
-echo "   SMTP Host: " . Config::get('mail.mailers.smtp.host') . "\n";
-echo "   SMTP Port: " . Config::get('mail.mailers.smtp.port') . "\n";
-echo "   SMTP Username: " . Config::get('mail.mailers.smtp.username') . "\n";
-echo "   SMTP Encryption: " . Config::get('mail.mailers.smtp.encryption') . "\n";
-echo "   From Address: " . Config::get('mail.from.address') . "\n";
-echo "   From Name: " . Config::get('mail.from.name') . "\n";
+echo '   Default mailer: '.Config::get('mail.default')."\n";
+echo '   SMTP Host: '.Config::get('mail.mailers.smtp.host')."\n";
+echo '   SMTP Port: '.Config::get('mail.mailers.smtp.port')."\n";
+echo '   SMTP Username: '.Config::get('mail.mailers.smtp.username')."\n";
+echo '   SMTP Encryption: '.Config::get('mail.mailers.smtp.encryption')."\n";
+echo '   From Address: '.Config::get('mail.from.address')."\n";
+echo '   From Name: '.Config::get('mail.from.name')."\n";
 
 // 4. Check if there are pending jobs in queue
 echo "\n4. Queue Status:\n";
@@ -69,12 +67,12 @@ if ($failedJobs > 0) {
         ->orderBy('failed_at', 'desc')
         ->limit(3)
         ->get(['payload', 'exception', 'failed_at']);
-    
+
     foreach ($recentFailed as $job) {
         $payload = json_decode($job->payload);
         echo "     - Failed at: {$job->failed_at}\n";
-        echo "       Job: " . ($payload->displayName ?? 'Unknown') . "\n";
-        echo "       Error: " . substr($job->exception, 0, 100) . "...\n\n";
+        echo '       Job: '.($payload->displayName ?? 'Unknown')."\n";
+        echo '       Error: '.substr($job->exception, 0, 100)."...\n\n";
     }
 }
 
@@ -84,15 +82,15 @@ echo "\n5. Testing Mail Service:\n";
 try {
     $mailService = app(MailService::class);
     echo "   MailService instance created successfully\n";
-    
+
     // Test connection
     $testResult = $mailService->testConnection();
-    echo "   Connection test result: " . $testResult['status'] . "\n";
+    echo '   Connection test result: '.$testResult['status']."\n";
     if ($testResult['status'] === 'error') {
-        echo "   Error message: " . $testResult['message'] . "\n";
+        echo '   Error message: '.$testResult['message']."\n";
     }
 } catch (\Exception $e) {
-    echo "   Error creating MailService: " . $e->getMessage() . "\n";
+    echo '   Error creating MailService: '.$e->getMessage()."\n";
 }
 
 // 6. Test sending a simple email
@@ -101,10 +99,10 @@ echo "\n6. Testing Direct Mail Send:\n";
 try {
     // Find an admin user for testing
     $adminUser = User::where('email', 'admin@admin.com')->first();
-    
-    if (!$adminUser) {
+
+    if (! $adminUser) {
         echo "   Admin user not found, creating test user...\n";
-        $adminUser = new User();
+        $adminUser = new User;
         $adminUser->name = 'Test Admin';
         $adminUser->email = 'admin@admin.com';
         $adminUser->id = 1;
@@ -118,12 +116,12 @@ try {
         'This is a test email to debug mail configuration issues.',
         ['email_type' => 'notification']
     );
-    
-    echo "   Send result: " . ($result ? 'SUCCESS' : 'FAILED') . "\n";
-    
+
+    echo '   Send result: '.($result ? 'SUCCESS' : 'FAILED')."\n";
+
 } catch (\Exception $e) {
-    echo "   Error sending test email: " . $e->getMessage() . "\n";
-    echo "   Stack trace: " . $e->getTraceAsString() . "\n";
+    echo '   Error sending test email: '.$e->getMessage()."\n";
+    echo '   Stack trace: '.$e->getTraceAsString()."\n";
 }
 
 // 7. Test Password Reset
@@ -132,27 +130,27 @@ echo "\n7. Testing Password Reset Flow:\n";
 try {
     // Generate a test token
     $token = \Illuminate\Support\Str::random(60);
-    
+
     // Try to insert into password_reset_tokens table
     $inserted = DB::table('password_reset_tokens')->insert([
         'email' => $adminUser->email,
         'token' => hash('sha256', $token),
-        'created_at' => now()
+        'created_at' => now(),
     ]);
-    
-    echo "   Token inserted into password_reset_tokens: " . ($inserted ? 'YES' : 'NO') . "\n";
-    
+
+    echo '   Token inserted into password_reset_tokens: '.($inserted ? 'YES' : 'NO')."\n";
+
     // Try to send password reset email
     echo "   Attempting to send password reset email...\n";
     $result = $mailService->sendPasswordResetEmail($adminUser, $token);
-    
-    echo "   Password reset email result: " . ($result ? 'SUCCESS' : 'FAILED') . "\n";
-    
+
+    echo '   Password reset email result: '.($result ? 'SUCCESS' : 'FAILED')."\n";
+
     // Clean up test token
     DB::table('password_reset_tokens')->where('email', $adminUser->email)->delete();
-    
+
 } catch (\Exception $e) {
-    echo "   Error in password reset test: " . $e->getMessage() . "\n";
+    echo '   Error in password reset test: '.$e->getMessage()."\n";
 }
 
 // 8. Check logs for recent errors
@@ -162,19 +160,19 @@ $logFile = storage_path('logs/laravel.log');
 if (file_exists($logFile)) {
     $lines = file($logFile);
     $recentMailErrors = [];
-    
+
     foreach ($lines as $line) {
         if (stripos($line, 'mail') !== false && stripos($line, 'error') !== false) {
             $recentMailErrors[] = $line;
         }
     }
-    
+
     if (count($recentMailErrors) > 0) {
-        echo "   Found " . count($recentMailErrors) . " mail-related errors\n";
+        echo '   Found '.count($recentMailErrors)." mail-related errors\n";
         echo "   Last 3 errors:\n";
         $lastThree = array_slice($recentMailErrors, -3);
         foreach ($lastThree as $error) {
-            echo "   " . substr($error, 0, 150) . "...\n";
+            echo '   '.substr($error, 0, 150)."...\n";
         }
     } else {
         echo "   No recent mail-related errors found in logs\n";

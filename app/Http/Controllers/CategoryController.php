@@ -5,14 +5,12 @@ namespace App\Http\Controllers;
 use App\Domain\Formatters\ProductFormatter;
 use App\Domain\Repositories\CategoryRepositoryInterface;
 use App\Domain\Repositories\ProductRepositoryInterface;
-use App\Http\Requests\AdminPatchRequest;
 use App\Http\Requests\StoreCategoryRequest;
 use App\Http\Requests\UpdateCategoryRequest;
 use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CategoryController extends Controller
@@ -93,7 +91,6 @@ class CategoryController extends Controller
             ],
         ]);
     }
-
 
     /**
      * Get main categories (those without parent).

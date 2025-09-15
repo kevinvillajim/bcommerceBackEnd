@@ -407,7 +407,7 @@ class ConfigurationController extends Controller
 
     /**
      * Get public volume discount configuration
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getVolumeDiscountConfigs()
@@ -416,7 +416,7 @@ class ConfigurationController extends Controller
             // Obtener configuraciones de descuentos por volumen
             $enabled = $this->configService->getConfig('volume_discounts.enabled', true);
             $stackable = $this->configService->getConfig('volume_discounts.stackable', true);
-            $defaultTiers = $this->configService->getConfig('volume_discounts.default_tiers', 
+            $defaultTiers = $this->configService->getConfig('volume_discounts.default_tiers',
                 '[{"quantity":5,"discount":5,"label":"Descuento 5+"},{"quantity":6,"discount":10,"label":"Descuento 10+"},{"quantity":19,"discount":15,"label":"Descuento 15+"}]'
             );
             $showSavingsMessage = $this->configService->getConfig('volume_discounts.show_savings_message', true);
@@ -430,7 +430,7 @@ class ConfigurationController extends Controller
             }
 
             // Ordenar tiers por cantidad ascendente
-            usort($tiersArray, function($a, $b) {
+            usort($tiersArray, function ($a, $b) {
                 return ($a['quantity'] ?? 0) - ($b['quantity'] ?? 0);
             });
 
@@ -444,7 +444,8 @@ class ConfigurationController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            Log::error('Error al obtener configuración de descuentos por volumen: ' . $e->getMessage());
+            Log::error('Error al obtener configuración de descuentos por volumen: '.$e->getMessage());
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error al obtener configuración de descuentos por volumen',
@@ -579,7 +580,7 @@ class ConfigurationController extends Controller
     {
         try {
             \Log::info('🔍 updateShippingConfigs - Datos recibidos:', $request->all());
-            
+
             $validator = Validator::make($request->all(), [
                 'enabled' => 'required|boolean',
                 'free_threshold' => 'nullable|numeric|min:0',
@@ -588,6 +589,7 @@ class ConfigurationController extends Controller
 
             if ($validator->fails()) {
                 \Log::error('❌ Validación falló:', $validator->errors()->toArray());
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Datos de validación incorrectos',
@@ -597,16 +599,16 @@ class ConfigurationController extends Controller
 
             $configs = $request->all();
             \Log::info('✅ Datos validados:', $configs);
-            
+
             // Normalizar los datos - ahora solo snake_case
             $normalizedConfigs = [
                 'enabled' => $configs['enabled'],
                 'free_threshold' => $configs['free_threshold'] ?? 0,
                 'default_cost' => $configs['default_cost'] ?? 0,
             ];
-            
+
             \Log::info('🔄 Datos normalizados:', $normalizedConfigs);
-            
+
             $configMapping = [
                 'enabled' => 'shipping.enabled',
                 'free_threshold' => 'shipping.free_threshold',
@@ -617,10 +619,10 @@ class ConfigurationController extends Controller
             foreach ($configMapping as $requestKey => $dbKey) {
                 if (isset($normalizedConfigs[$requestKey])) {
                     $value = $normalizedConfigs[$requestKey];
-                    \Log::info("💾 Guardando: {$dbKey} = " . json_encode($value) . " (tipo: " . gettype($value) . ")");
-                    
+                    \Log::info("💾 Guardando: {$dbKey} = ".json_encode($value).' (tipo: '.gettype($value).')');
+
                     $result = $this->configService->setConfig($dbKey, $value);
-                    \Log::info("📊 Resultado setConfig para {$dbKey}: " . ($result ? 'SUCCESS' : 'FAILED'));
+                    \Log::info("📊 Resultado setConfig para {$dbKey}: ".($result ? 'SUCCESS' : 'FAILED'));
                 }
             }
 

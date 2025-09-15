@@ -2,14 +2,14 @@
 
 namespace App\Console\Commands;
 
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Carbon\Carbon;
 
 class CheckRealConfigs extends Command
 {
     protected $signature = 'debug:check-real-configs';
+
     protected $description = 'Check real configurations and create test coupon';
 
     public function handle()
@@ -45,7 +45,7 @@ class CheckRealConfigs extends Command
         $this->info('👤 VERIFICANDO USUARIO ADMIN:');
         $admin = DB::table('users')->where('email', 'admin@admin.com')->first();
         if ($admin) {
-            $this->info('   ✅ Usuario admin encontrado - ID: ' . $admin->id);
+            $this->info('   ✅ Usuario admin encontrado - ID: '.$admin->id);
         } else {
             $this->warn('   ⚠️ Usuario admin no encontrado');
         }
@@ -53,11 +53,11 @@ class CheckRealConfigs extends Command
 
         // 4. Crear cupón de prueba
         $this->info('🎫 CREANDO CUPÓN DE PRUEBA:');
-        
+
         if ($admin) {
             // Verificar si ya existe
             $existingCoupon = DB::table('discount_codes')->where('code', 'TEST5')->first();
-            
+
             if ($existingCoupon) {
                 $this->info('   ✅ Cupón TEST5 ya existe');
             } else {
@@ -70,9 +70,9 @@ class CheckRealConfigs extends Command
                     'expires_at' => Carbon::now()->addMonths(6),
                     'is_active' => true,
                     'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'updated_at' => Carbon::now(),
                 ]);
-                
+
                 $this->info("   ✅ Cupón TEST5 creado con ID: {$couponId}");
             }
         }
@@ -92,7 +92,7 @@ class CheckRealConfigs extends Command
 
         // 6. Verificar estructura de tabla configurations para entender descuentos
         $this->info('🗄️ ESTRUCTURA TABLA CONFIGURATIONS:');
-        $configStructure = DB::select("DESCRIBE configurations");
+        $configStructure = DB::select('DESCRIBE configurations');
         foreach ($configStructure as $column) {
             $this->line("   {$column->Field}: {$column->Type}");
         }

@@ -7,15 +7,19 @@ use App\Models\User;
 class NotificationMail extends BaseMail
 {
     private User $user;
+
     private string $subject;
+
     private string $message;
+
     private string $emailType;
+
     private array $additionalData;
 
     public function __construct(
-        User $user, 
-        string $subject, 
-        string $message, 
+        User $user,
+        string $subject,
+        string $message,
         string $emailType = 'notification',
         array $additionalData = []
     ) {
@@ -24,10 +28,10 @@ class NotificationMail extends BaseMail
         $this->message = $message;
         $this->emailType = $emailType;
         $this->additionalData = $additionalData;
-        
+
         // Initialize parent first to set up configService
         parent::__construct();
-        
+
         // Now add the email data
         $this->emailData = array_merge($this->emailData, array_merge([
             'user' => $user,

@@ -103,18 +103,18 @@ class EloquentOrderRepository implements OrderRepositoryInterface
 
                 // ✅ CORREGIDO: shipping_data - dejar que Laravel cast 'array' maneje el JSON automáticamente
                 $shippingData = $orderEntity->getShippingData();
-                
+
                 // 🔍 LOGGING TEMPORAL: Tracking de shipping_data persistence
-                Log::info("🔍 EloquentOrderRepository.save() - SHIPPING_DATA TRACKING", [
+                Log::info('🔍 EloquentOrderRepository.save() - SHIPPING_DATA TRACKING', [
                     'order_id' => $orderEntity->getId(),
                     'shipping_data_from_entity' => $shippingData,
                     'shipping_data_type' => gettype($shippingData),
                     'is_array' => is_array($shippingData),
                     'has_identification' => is_array($shippingData) && isset($shippingData['identification']),
                     'identification_value' => is_array($shippingData) ? ($shippingData['identification'] ?? 'NO_SET') : 'NOT_ARRAY',
-                    'shipping_data_count' => is_array($shippingData) ? count($shippingData) : 'NOT_COUNTABLE'
+                    'shipping_data_count' => is_array($shippingData) ? count($shippingData) : 'NOT_COUNTABLE',
                 ]);
-                
+
                 // ✅ CORRECCIÓN CRÍTICA: Pasar array directamente, Laravel cast 'array' hará json_encode() automáticamente
                 if (is_array($shippingData)) {
                     $order->shipping_data = $shippingData;  // ✅ ARRAY DIRECTO
@@ -123,13 +123,13 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 } else {
                     $order->shipping_data = [];  // ✅ ARRAY VACÍO
                 }
-                
+
                 // 🔍 LOGGING TEMPORAL: Verificar qué se pasará a Laravel
-                Log::info("🔍 EloquentOrderRepository.save() - ARRAY PARA LARAVEL CAST", [
+                Log::info('🔍 EloquentOrderRepository.save() - ARRAY PARA LARAVEL CAST', [
                     'order_id' => $orderEntity->getId(),
                     'shipping_data_array' => $order->shipping_data,
                     'is_array' => is_array($order->shipping_data),
-                    'array_count' => is_array($order->shipping_data) ? count($order->shipping_data) : 'NOT_ARRAY'
+                    'array_count' => is_array($order->shipping_data) ? count($order->shipping_data) : 'NOT_ARRAY',
                 ]);
 
                 // ✅ CAMPOS DE DESCUENTOS POR VOLUMEN CON VALORES POR DEFECTO Y VALIDACIÓN DE MÉTODOS
@@ -344,7 +344,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
             // Crear o encontrar la orden
             $order = $orderEntity->getId() ? Order::find($orderEntity->getId()) : new Order;
 
-            if (!$order) {
+            if (! $order) {
                 $order = new Order;
             }
 
@@ -393,7 +393,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                     $orderItem->quantity = $itemData['quantity'];
                     $orderItem->price = $itemData['price'];
                     $orderItem->subtotal = $itemData['subtotal'] ?? ($itemData['price'] * $itemData['quantity']);
-                    
+
                     // ✅ CRÍTICO: Obtener seller_id desde el producto
                     if ($itemData['product_id']) {
                         try {
@@ -404,7 +404,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                         } catch (\Exception $e) {
                             Log::warning('Error obteniendo seller_id del producto', [
                                 'product_id' => $itemData['product_id'],
-                                'error' => $e->getMessage()
+                                'error' => $e->getMessage(),
                             ]);
                         }
                     }
@@ -415,7 +415,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
 
             // Refrescar y retornar la entidad
             $order->refresh();
-            
+
             return new OrderEntity(
                 $order->user_id,
                 $order->seller_id,
@@ -444,23 +444,24 @@ class EloquentOrderRepository implements OrderRepositoryInterface
 
     public function updatePaymentInfo(int $orderId, array $paymentInfo): bool
     {
-        Log::info("🔄 EloquentOrderRepository.updatePaymentInfo INICIADO", [
+        Log::info('🔄 EloquentOrderRepository.updatePaymentInfo INICIADO', [
             'orderId' => $orderId,
-            'paymentInfo' => $paymentInfo
+            'paymentInfo' => $paymentInfo,
         ]);
 
         $order = Order::find($orderId);
 
         if (! $order) {
-            Log::error("❌ ORDER NO ENCONTRADA", ['orderId' => $orderId]);
+            Log::error('❌ ORDER NO ENCONTRADA', ['orderId' => $orderId]);
+
             return false;
         }
 
-        Log::info("✅ ORDER ENCONTRADA", [
+        Log::info('✅ ORDER ENCONTRADA', [
             'orderId' => $orderId,
             'current_payment_status' => $order->payment_status,
             'current_payment_id' => $order->payment_id,
-            'current_payment_method' => $order->payment_method
+            'current_payment_method' => $order->payment_method,
         ]);
 
         $oldPaymentStatus = $order->payment_status;
@@ -481,47 +482,48 @@ class EloquentOrderRepository implements OrderRepositoryInterface
             $order->status = $paymentInfo['status'];
         }
 
-        Log::info("🔄 CAMPOS ACTUALIZADOS ANTES DEL SAVE", [
+        Log::info('🔄 CAMPOS ACTUALIZADOS ANTES DEL SAVE', [
             'orderId' => $orderId,
             'changes' => [
                 'payment_id' => ['old' => $oldPaymentId, 'new' => $order->payment_id],
                 'payment_status' => ['old' => $oldPaymentStatus, 'new' => $order->payment_status],
-                'payment_method' => ['old' => $oldPaymentMethod, 'new' => $order->payment_method]
+                'payment_method' => ['old' => $oldPaymentMethod, 'new' => $order->payment_method],
             ],
             'isDirty' => $order->isDirty(),
-            'dirtyFields' => $order->getDirty()
+            'dirtyFields' => $order->getDirty(),
         ]);
 
         try {
             $saveResult = $order->save();
-            
+
             if ($saveResult) {
                 // Verificar que realmente se guardó releyendo desde BD
                 $savedOrder = Order::find($orderId);
-                Log::info("✅ ORDER.SAVE() EXITOSO - VERIFICANDO PERSISTENCIA", [
+                Log::info('✅ ORDER.SAVE() EXITOSO - VERIFICANDO PERSISTENCIA', [
                     'orderId' => $orderId,
                     'saveResult' => $saveResult,
                     'verification' => [
                         'payment_id' => $savedOrder->payment_id,
                         'payment_status' => $savedOrder->payment_status,
-                        'payment_method' => $savedOrder->payment_method
+                        'payment_method' => $savedOrder->payment_method,
                     ],
-                    'wasActuallyPersisted' => $savedOrder->payment_status === $paymentInfo['payment_status']
+                    'wasActuallyPersisted' => $savedOrder->payment_status === $paymentInfo['payment_status'],
                 ]);
             } else {
-                Log::error("❌ ORDER.SAVE() FALLÓ", [
+                Log::error('❌ ORDER.SAVE() FALLÓ', [
                     'orderId' => $orderId,
-                    'saveResult' => $saveResult
+                    'saveResult' => $saveResult,
                 ]);
             }
-            
+
             return $saveResult;
         } catch (\Exception $e) {
-            Log::error("❌ EXCEPCIÓN EN ORDER.SAVE()", [
+            Log::error('❌ EXCEPCIÓN EN ORDER.SAVE()', [
                 'orderId' => $orderId,
                 'exception' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return false;
         }
     }
@@ -586,11 +588,11 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                     // Obtener el precio original del producto
                     $originalPrice = $item->product->price ?? $item->price;
                     $sellerDiscount = $item->product->discount_percentage ?? 0;
-                    
+
                     // Calcular si hubo descuento por volumen
                     $volumeDiscountPercentage = 0;
                     $volumeSavings = 0;
-                    
+
                     // Si el precio del item es menor que el precio original con descuento del seller
                     // entonces hay descuento por volumen aplicado
                     $priceAfterSellerDiscount = $originalPrice * (1 - $sellerDiscount / 100);
@@ -600,7 +602,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                         $volumeDiscountPercentage = round(((1 - ($pricePerUnit / $priceAfterSellerDiscount)) * 100), 2);
                         $volumeSavings = ($priceAfterSellerDiscount - $pricePerUnit) * $item->quantity;
                     }
-                    
+
                     $items[] = [
                         'id' => $item->id,
                         'product_id' => $item->product_id,
@@ -630,11 +632,11 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                 // Obtener el precio original del producto
                 $originalPrice = $item->product->price ?? $item->price;
                 $sellerDiscount = $item->product->discount_percentage ?? 0;
-                
+
                 // Calcular si hubo descuento por volumen
                 $volumeDiscountPercentage = 0;
                 $volumeSavings = 0;
-                
+
                 // Si el precio del item es menor que el precio original con descuento del seller
                 // entonces hay descuento por volumen aplicado
                 $priceAfterSellerDiscount = $originalPrice * (1 - $sellerDiscount / 100);
@@ -644,7 +646,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                     $volumeDiscountPercentage = round(((1 - ($pricePerUnit / $priceAfterSellerDiscount)) * 100), 2);
                     $volumeSavings = ($priceAfterSellerDiscount - $pricePerUnit) * $item->quantity;
                 }
-                
+
                 $items[] = [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -1625,7 +1627,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                         } else {
                             Log::error('❌ DEUNA WEBHOOK: Product not found when creating order items', [
                                 'product_id' => $itemData['product_id'],
-                                'order_id' => $order->id
+                                'order_id' => $order->id,
                             ]);
                             $orderItem->original_price = $itemData['price'];
                             $orderItem->seller_id = null; // Fallback a null si no encontramos el producto
@@ -1634,7 +1636,7 @@ class EloquentOrderRepository implements OrderRepositoryInterface
                         Log::error('❌ DEUNA WEBHOOK: Error getting product seller_id', [
                             'product_id' => $itemData['product_id'],
                             'error' => $e->getMessage(),
-                            'order_id' => $order->id
+                            'order_id' => $order->id,
                         ]);
                         // Si falla, usar el precio del item como original
                         $orderItem->original_price = $itemData['price'];

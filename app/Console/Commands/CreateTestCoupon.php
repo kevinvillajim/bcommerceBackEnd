@@ -2,13 +2,14 @@
 
 namespace App\Console\Commands;
 
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 
 class CreateTestCoupon extends Command
 {
     protected $signature = 'debug:create-test-coupon';
+
     protected $description = 'Create test coupon with correct structure';
 
     public function handle()
@@ -19,12 +20,12 @@ class CreateTestCoupon extends Command
         // 1. Ver estructura de discount_codes
         $this->info('🗄️ ESTRUCTURA DE TABLA DISCOUNT_CODES:');
         try {
-            $structure = DB::select("DESCRIBE discount_codes");
+            $structure = DB::select('DESCRIBE discount_codes');
             foreach ($structure as $column) {
-                $this->line("   {$column->Field}: {$column->Type} " . ($column->Null === 'NO' ? '(required)' : '(optional)'));
+                $this->line("   {$column->Field}: {$column->Type} ".($column->Null === 'NO' ? '(required)' : '(optional)'));
             }
         } catch (\Exception $e) {
-            $this->error('   ❌ Tabla discount_codes no existe o error: ' . $e->getMessage());
+            $this->error('   ❌ Tabla discount_codes no existe o error: '.$e->getMessage());
         }
         $this->newLine();
 
@@ -35,7 +36,7 @@ class CreateTestCoupon extends Command
             if ($existingCoupons->count() > 0) {
                 foreach ($existingCoupons as $coupon) {
                     $this->line('   Cupón ejemplo:');
-                    foreach ((array)$coupon as $field => $value) {
+                    foreach ((array) $coupon as $field => $value) {
                         $this->line("      {$field}: {$value}");
                     }
                     $this->newLine();
@@ -45,7 +46,7 @@ class CreateTestCoupon extends Command
                 $this->warn('   No hay cupones existentes');
             }
         } catch (\Exception $e) {
-            $this->error('   ❌ Error leyendo cupones: ' . $e->getMessage());
+            $this->error('   ❌ Error leyendo cupones: '.$e->getMessage());
         }
 
         // 3. Crear cupón con estructura mínima
@@ -63,14 +64,14 @@ class CreateTestCoupon extends Command
                     'expires_at' => Carbon::now()->addMonths(6),
                     'is_active' => true,
                     'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'updated_at' => Carbon::now(),
                 ]);
-                
+
                 $this->info("   ✅ Cupón TEST5 creado con ID: {$couponId}");
             }
         } catch (\Exception $e) {
-            $this->error('   ❌ Error creando cupón: ' . $e->getMessage());
-            
+            $this->error('   ❌ Error creando cupón: '.$e->getMessage());
+
             // Intentar con estructura aún más básica
             $this->info('   🔄 Intentando con estructura básica...');
             try {
@@ -79,11 +80,11 @@ class CreateTestCoupon extends Command
                     'discount_percentage' => 5.00,
                     'is_active' => 1,
                     'created_at' => Carbon::now(),
-                    'updated_at' => Carbon::now()
+                    'updated_at' => Carbon::now(),
                 ]);
                 $this->info("   ✅ Cupón TEST5 creado (básico) con ID: {$couponId}");
             } catch (\Exception $e2) {
-                $this->error('   ❌ Error también con estructura básica: ' . $e2->getMessage());
+                $this->error('   ❌ Error también con estructura básica: '.$e2->getMessage());
             }
         }
 
@@ -94,7 +95,7 @@ class CreateTestCoupon extends Command
         $testCoupon = DB::table('discount_codes')->where('code', 'TEST5')->first();
         if ($testCoupon) {
             $this->info('   ✅ Cupón TEST5 disponible:');
-            foreach ((array)$testCoupon as $field => $value) {
+            foreach ((array) $testCoupon as $field => $value) {
                 $this->line("      {$field}: {$value}");
             }
         } else {
