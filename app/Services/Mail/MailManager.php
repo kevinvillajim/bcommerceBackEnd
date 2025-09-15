@@ -288,6 +288,44 @@ class MailManager
     }
 
     /**
+     * Send invoice email with PDF attachment
+     */
+    public function sendInvoiceEmail(User $user, \App\Models\Invoice $invoice, string $pdfPath): bool
+    {
+        try {
+            // Prepare recipients: customer + backup email
+            $recipients = [
+                $invoice->customer_email, // Cliente de la factura
+                'facturacion@comersia.app' // Backup empresa
+            ];
+
+            // Send to each recipient
+            foreach ($recipients as $email) {
+                Mail::to($email)->send(new \App\Mail\InvoiceMail($user, $invoice, $pdfPath));
+            }
+
+            Log::info('Invoice email sent successfully', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'recipients' => $recipients,
+                'pdf_path' => $pdfPath,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to send invoice email', [
+                'invoice_id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'customer_email' => $invoice->customer_email,
+                'pdf_path' => $pdfPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
      * Get available email templates
      */
     public function getAvailableTemplates(): array
@@ -322,6 +360,12 @@ class MailManager
                 'description' => 'Email de confirmación para nuevos pedidos',
                 'template' => 'emails.orders.confirmation',
                 'mailable' => OrderConfirmationMail::class,
+            ],
+            'invoice' => [
+                'name' => 'Factura Electrónica',
+                'description' => 'Email con factura electrónica adjunta',
+                'template' => 'emails.invoices.simple',
+                'mailable' => \App\Mail\InvoiceMail::class,
             ],
         ];
     }

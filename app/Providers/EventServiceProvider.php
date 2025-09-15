@@ -23,6 +23,7 @@ use App\Events\ShippingStatusUpdated;
 use App\Listeners\GenerateInvoiceFromOrderListener;
 use App\Listeners\GeneratePdfFromInvoiceListener;
 use App\Listeners\NotifyAdminOfFeedback;
+use App\Listeners\SendInvoiceEmailListener;
 use App\Listeners\NotifyAdminSellerRankUp;
 use App\Listeners\NotifySellerOfAccountBlock;
 // Seller notification events
@@ -67,6 +68,7 @@ class EventServiceProvider extends ServiceProvider
         // ✅ NUEVO: Evento para facturas aprobadas por SRI
         InvoiceApproved::class => [
             GeneratePdfFromInvoiceListener::class, // ✅ Generar PDF automáticamente
+            SendInvoiceEmailListener::class, // ✅ Enviar email con PDF adjunto
         ],
 
         OrderCompleted::class => [
