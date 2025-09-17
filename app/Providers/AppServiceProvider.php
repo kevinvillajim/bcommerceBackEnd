@@ -38,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
         SellerOrderServiceProvider::class,
         ChatServiceProvider::class,
         DatafastServiceProvider::class,
+        PaymentServiceProvider::class, // ✅ Arquitectura centralizada de pagos
         PricingServiceProvider::class,
         AccountingServiceProvider::class, // ✅ Sistema de contabilidad y SRI
     ];

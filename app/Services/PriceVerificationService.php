@@ -81,8 +81,8 @@ class PriceVerificationService
                 }
             }
 
-            // Tolerancia máxima permitida
-            $tolerance = 0.01; // 1 centavo - NUNCA MÁS
+            // VALIDACIÓN ESTRICTA: CERO TOLERANCIA en totales
+            $tolerance = 0.001; // Tolerancia mínima solo para redondeo de punto flotante
             $difference = abs($serverItemsTotal - $clientTotal);
 
             if ($difference > $tolerance) {
@@ -179,10 +179,10 @@ class PriceVerificationService
             $serverPrice = $this->calculateServerPrice($product, $quantity);
         }
 
-        // Tolerance de 0.01 para redondeos
+        // VALIDACIÓN ESTRICTA: Tolerancia mínima para precios individuales
         $priceDifference = abs($serverPrice - $clientPrice);
 
-        if ($priceDifference > 0.01) {
+        if ($priceDifference > 0.001) {
             Log::warning('🚨 SECURITY: Price tampering detected', [
                 'product_id' => $productId,
                 'product_name' => $product->getName(),
@@ -227,7 +227,7 @@ class PriceVerificationService
             // Usar el servicio centralizado para calcular
             $serverTotals = $this->pricingService->calculateCartTotals($items, $userId, $couponCode);
 
-            $tolerance = 0.02; // 2 centavos de tolerancia
+            $tolerance = 0.001; // VALIDACIÓN ESTRICTA: Solo tolerancia de punto flotante
 
             $checks = [
                 'final_total' => $serverTotals['final_total'] ?? 0,

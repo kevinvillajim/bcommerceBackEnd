@@ -31,7 +31,7 @@ use App\Http\Controllers\DeunaWebhookController;
 use App\Http\Controllers\FavoriteController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\HeaderController;
-use App\Http\Controllers\InvoiceController;
+// use App\Http\Controllers\InvoiceController; // ⚠️ Temporalmente comentado - archivo no existe
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemBreakdownController;
@@ -43,6 +43,7 @@ use App\Http\Controllers\RatingController;
 use App\Http\Controllers\RecommendationController;
 // Auth-specific controllers
 use App\Http\Controllers\SellerController;
+use App\Http\Controllers\SellerEarningsController;
 use App\Http\Controllers\SellerOrderController;
 use App\Http\Controllers\ShippingAPISimulatorController;
 use App\Http\Controllers\ShippingController;
@@ -484,6 +485,8 @@ Route::middleware('jwt.auth')->group(function () {
     | Invoice Routes
     |--------------------------------------------------------------------------
     */
+    // ⚠️ TEMPORALMENTE COMENTADO: InvoiceController no existe
+    /*
     Route::prefix('invoices')->group(function () {
         Route::get('/', [InvoiceController::class, 'index']);
         Route::get('/{id}', [InvoiceController::class, 'show']);
@@ -491,6 +494,7 @@ Route::middleware('jwt.auth')->group(function () {
         Route::post('/{id}/cancel', [InvoiceController::class, 'cancel']);
         Route::get('/{id}/download', [InvoiceController::class, 'download']);
     });
+    */
 
     /*
     |--------------------------------------------------------------------------
@@ -498,8 +502,16 @@ Route::middleware('jwt.auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::prefix('datafast')->group(function () {
+        // ✅ ARQUITECTURA CENTRALIZADA: Almacenar CheckoutData temporal validado
+        Route::post('/store-checkout-data', [DatafastController::class, 'storeCheckoutData'])->middleware('throttle:checkout');
+
+        // ✅ CREAR CHECKOUT: Crear checkout en Datafast y registrar transacción
         Route::post('/create-checkout', [DatafastController::class, 'createCheckout'])->middleware('throttle:payment');
+
+        // ✅ VERIFICAR PAGO: Verificación completa con procesamiento (usado por DatafastResultPage)
         Route::post('/verify-payment', [DatafastController::class, 'verifyPayment'])->middleware('throttle:payment');
+
+        // ✅ CONSULTAR ESTADO: Solo consulta de estado sin procesamiento (para debugging/monitoreo)
         Route::get('/verify-payment/{transactionId}', [DatafastController::class, 'checkPaymentStatus'])->middleware('throttle:payment');
     });
     Route::post('/datafast/webhook', [DatafastController::class, 'webhook'])->middleware('throttle:webhook');
@@ -512,6 +524,7 @@ Route::middleware('jwt.auth')->group(function () {
                 'environment' => config('app.env'),
             ]);
         });
+
     }
 });
 
@@ -598,6 +611,22 @@ Route::middleware(['jwt.auth', 'seller'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | Seller Earnings Management
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('seller/earnings')->group(function () {
+        // Métricas generales de earnings
+        Route::get('/', [SellerEarningsController::class, 'getEarnings']);
+        // Desglose mensual de earnings
+        Route::get('/monthly', [SellerEarningsController::class, 'getMonthlyBreakdown']);
+        // Exportar reporte en PDF
+        Route::post('/export-pdf', [SellerEarningsController::class, 'exportPdf']);
+        // Descargar PDF generado
+        Route::get('/download-pdf', [SellerEarningsController::class, 'downloadPdf']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Chats del Vendedor - NUEVAS RUTAS
     |--------------------------------------------------------------------------
     */
@@ -660,6 +689,7 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
     Route::post('users/{id}/reset-password', [AdminUserController::class, 'resetPassword']);
     Route::put('users/{id}/make-admin', [AdminUserController::class, 'makeAdmin']);
     Route::post('users/{id}/make-seller', [AdminUserController::class, 'makeSeller']);
+    Route::put('users/{id}/make-payment', [AdminUserController::class, 'makePaymentUser']);
     Route::delete('users/{id}', [AdminUserController::class, 'destroy']);
 
     /*
@@ -832,10 +862,26 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::prefix('accounting')->group(function () {
+        // ✅ Existing routes
         Route::get('/balance-sheet', [AccountingController::class, 'balanceSheet']);
         Route::get('/income-statement', [AccountingController::class, 'incomeStatement']);
-        Route::get('/accounts', [AccountingController::class, 'accounts']);
         Route::get('/accounts/{id}/ledger', [AccountingController::class, 'accountLedger']);
+
+        // ✅ NEW: Metrics and dashboard data
+        Route::get('/metrics', [AccountingController::class, 'metrics']);
+
+        // ✅ NEW: Transactions management
+        Route::get('/transactions', [AccountingController::class, 'transactions']);
+        Route::get('/transactions/{id}', [AccountingController::class, 'transaction']);
+        Route::post('/transactions', [AccountingController::class, 'createTransaction']);
+        Route::put('/transactions/{id}', [AccountingController::class, 'updateTransaction']);
+        Route::patch('/transactions/{id}/post', [AccountingController::class, 'postTransaction']);
+        Route::delete('/transactions/{id}', [AccountingController::class, 'deleteTransaction']);
+
+        // ✅ NEW: Accounts management (updated)
+        Route::get('/accounts', [AccountingController::class, 'accounts']);
+        Route::post('/accounts', [AccountingController::class, 'createAccount']);
+        Route::put('/accounts/{id}', [AccountingController::class, 'updateAccount']);
     });
 
     /*
@@ -1111,3 +1157,10 @@ Route::get('/configurations/tax-public', [App\Http\Controllers\Admin\TaxConfigur
 
 // 🎯 ENDPOINT UNIFICADO: Todas las configuraciones en una sola llamada (Optimización de rendimiento)
 Route::get('/configurations/unified', [App\Http\Controllers\Admin\UnifiedConfigurationController::class, 'getUnifiedConfiguration']);
+
+// ================================
+// 💳 MÓDULO DE PAGOS EXTERNOS
+// ================================
+// Rutas independientes para el sistema de pagos externos
+require __DIR__.'/external-payments.php';
+

@@ -251,7 +251,7 @@ class SellerEntity
             'description' => $this->description,
             'status' => $this->status,
             'verification_level' => $this->verificationLevel,
-            'commission_rate' => $this->commissionRate,
+            // 'commission_rate' => $this->commissionRate, // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin (se obtiene dinámicamente)
             'total_sales' => $this->totalSales,
             'is_featured' => $this->isFeatured,
             'average_rating' => $this->averageRating,

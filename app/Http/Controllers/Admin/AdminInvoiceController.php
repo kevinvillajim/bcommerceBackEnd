@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 class AdminInvoiceController extends Controller
 {
     private SriApiService $sriApiService;
+
     private GenerateInvoicePdfUseCase $generateInvoicePdfUseCase;
 
     public function __construct(SriApiService $sriApiService, GenerateInvoicePdfUseCase $generateInvoicePdfUseCase)
@@ -533,7 +534,7 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::with(['order.items.product', 'order.user'])->find($id);
 
-            if (!$invoice) {
+            if (! $invoice) {
                 return response('Factura no encontrada', 404);
             }
 
@@ -579,7 +580,7 @@ class AdminInvoiceController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response('Error al generar el PDF: ' . $e->getMessage(), 500);
+            return response('Error al generar el PDF: '.$e->getMessage(), 500);
         }
     }
 

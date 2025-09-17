@@ -25,6 +25,11 @@ class AccountingTransaction extends Model
         'is_posted' => 'boolean',
     ];
 
+    protected $appends = [
+        'is_balanced',
+        'balance'
+    ];
+
     public function entries()
     {
         return $this->hasMany(AccountingEntry::class, 'transaction_id');
@@ -43,5 +48,28 @@ class AccountingTransaction extends Model
     public function invoice()
     {
         return $this->hasOne(Invoice::class, 'transaction_id');
+    }
+
+    /**
+     * Calcula si la transacción está balanceada (débitos = créditos)
+     */
+    public function getIsBalancedAttribute(): bool
+    {
+        $totalDebits = $this->entries->sum('debit_amount');
+        $totalCredits = $this->entries->sum('credit_amount');
+
+        // Considerar balanceada si la diferencia es menor a 0.01 (centavos)
+        return abs($totalDebits - $totalCredits) < 0.01;
+    }
+
+    /**
+     * Calcula la diferencia entre débitos y créditos
+     */
+    public function getBalanceAttribute(): float
+    {
+        $totalDebits = $this->entries->sum('debit_amount');
+        $totalCredits = $this->entries->sum('credit_amount');
+
+        return round($totalDebits - $totalCredits, 2);
     }
 }

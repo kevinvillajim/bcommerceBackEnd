@@ -126,10 +126,10 @@ class GenerateInvoiceFromOrderUseCase
         // 🧾 LOG: Extrayendo datos de cliente para SRI
         Log::info('🧾 SRI: Extrayendo datos de cliente', [
             'order_id' => $order->id,
-            'has_billing_data' => !empty($order->billing_data),
-            'has_shipping_data' => !empty($order->shipping_data),
+            'has_billing_data' => ! empty($order->billing_data),
+            'has_shipping_data' => ! empty($order->shipping_data),
             'use_same_address' => $useSameAddress,
-            'source_data_from' => $useSameAddress ? 'shipping' : 'billing'
+            'source_data_from' => $useSameAddress ? 'shipping' : 'billing',
         ]);
 
         $sourceData = $useSameAddress ? $shippingData : $billingData;
@@ -147,7 +147,7 @@ class GenerateInvoiceFromOrderUseCase
             'extracted_identification' => $identification,
             'source_data_from' => $useSameAddress ? 'shipping' : 'billing',
             'customer_name' => $sourceData['name'] ?? 'NO_NAME',
-            'customer_email' => $sourceData['email'] ?? 'NO_EMAIL'
+            'customer_email' => $sourceData['email'] ?? 'NO_EMAIL',
         ]);
 
         // ✅ Validar formato de identificación

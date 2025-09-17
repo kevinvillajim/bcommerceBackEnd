@@ -357,7 +357,7 @@ class AdminUserController extends Controller
             $seller->description = $request->description ?? '';
             $seller->status = 'active'; // El admin lo crea como activo directamente
             $seller->verification_level = 'basic';
-            $seller->commission_rate = 10.00; // Por defecto, 10%
+            // $seller->commission_rate = 10.00; // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin (se obtiene dinámicamente)
             $seller->total_sales = 0;
             $seller->is_featured = false;
             $seller->save();
@@ -382,6 +382,75 @@ class AdminUserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al convertir usuario en vendedor',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Convertir usuario en usuario de pagos
+     */
+    public function makePaymentUser(int $id): JsonResponse
+    {
+        try {
+            $user = User::find($id);
+
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Usuario no encontrado',
+                ], 404);
+            }
+
+            // Verificar si ya es administrador con rol payment
+            if ($user->isAdmin()) {
+                $admin = $user->admin;
+                if ($admin->role === 'payment') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El usuario ya tiene rol de pagos',
+                    ], 400);
+                }
+
+                // Si ya es admin pero con otro rol, actualizar a payment
+                $admin->update([
+                    'role' => 'payment',
+                    'permissions' => json_encode(['external_payments']),
+                    'status' => 'active',
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Usuario actualizado a rol de pagos correctamente',
+                ]);
+            }
+
+            // Crear registro de admin con rol payment para el usuario
+            $user->admin()->create([
+                'role' => 'payment',
+                'permissions' => json_encode(['external_payments']),
+                'status' => 'active',
+            ]);
+
+            Log::info('Usuario convertido a rol payment por administrador', [
+                'payment_user_id' => $id,
+                'payment_user_email' => $user->email,
+                'admin_user_id' => auth()->id(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usuario convertido a rol de pagos correctamente',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al convertir usuario a rol de pagos: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al convertir usuario a rol de pagos',
                 'error' => $e->getMessage(),
             ], 500);
         }

@@ -248,9 +248,16 @@ class DatafastService implements PaymentGatewayInterface
             'customer.phone' => $this->formatPhone($customer['phone'] ?? '0999999999'),
 
             // Datos de envío y facturación - con longitudes validadas
-            'shipping.street1' => $this->sanitizeString($orderData['shipping']['address'] ?? 'Dirección de prueba', 100),
+            // ✅ CORREGIDO: Usar 'street' consistentemente con frontend, fallback a 'address' para retrocompatibilidad
+            'shipping.street1' => $this->sanitizeString(
+                $orderData['shipping']['street'] ?? $orderData['shipping']['address'] ?? 'Dirección de prueba',
+                100
+            ),
             'shipping.country' => $this->formatCountryCode($orderData['shipping']['country'] ?? 'EC'),
-            'billing.street1' => $this->sanitizeString($orderData['billing']['address'] ?? 'Dirección de prueba', 100),
+            'billing.street1' => $this->sanitizeString(
+                $orderData['billing']['street'] ?? $orderData['billing']['address'] ?? 'Dirección de prueba',
+                100
+            ),
             'billing.country' => $this->formatCountryCode($orderData['billing']['country'] ?? 'EC'),
 
             // Modo de prueba (solo en ambiente de desarrollo, no en producción)
@@ -324,8 +331,8 @@ class DatafastService implements PaymentGatewayInterface
         }
 
         // Solo validar que customer sea un array, no su contenido
-        if (!is_array($orderData['customer'])) {
-            throw new \Exception("El campo customer debe ser un array");
+        if (! is_array($orderData['customer'])) {
+            throw new \Exception('El campo customer debe ser un array');
         }
     }
 
@@ -340,7 +347,7 @@ class DatafastService implements PaymentGatewayInterface
             'customer.email',
             'customer.identificationDocId',
             'entityId',
-            'amount'
+            'amount',
         ];
 
         foreach ($requiredDataFields as $field) {

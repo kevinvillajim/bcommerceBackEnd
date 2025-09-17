@@ -49,7 +49,7 @@ class SendInvoiceEmailListener
 
             // ✅ Verificar que el archivo PDF realmente exista
             $pdfExists = Storage::disk('public')->exists($event->invoice->pdf_path);
-            if (!$pdfExists) {
+            if (! $pdfExists) {
                 Log::error('El archivo PDF no existe en storage', [
                     'invoice_id' => $event->invoice->id,
                     'pdf_path' => $event->invoice->pdf_path,
@@ -60,7 +60,7 @@ class SendInvoiceEmailListener
 
             // ✅ Cargar datos del usuario asociado a la factura
             $user = $event->invoice->user;
-            if (!$user) {
+            if (! $user) {
                 Log::error('No se pudo encontrar el usuario asociado a la factura', [
                     'invoice_id' => $event->invoice->id,
                     'user_id' => $event->invoice->user_id,

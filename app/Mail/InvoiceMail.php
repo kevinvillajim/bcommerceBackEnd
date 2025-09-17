@@ -8,7 +8,9 @@ use App\Models\User;
 class InvoiceMail extends BaseMail
 {
     private User $user;
+
     private Invoice $invoice;
+
     private string $pdfPath;
 
     public function __construct(User $user, Invoice $invoice, string $pdfPath)
@@ -38,6 +40,7 @@ class InvoiceMail extends BaseMail
     protected function getSubject(): string
     {
         $appName = $this->configService->getConfig('email.senderName', 'Comersia');
+
         return "Factura #{$this->invoice->invoice_number} - {$appName}";
     }
 

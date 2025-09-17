@@ -2,41 +2,118 @@
 
 namespace App\Http\Controllers;
 
-use App\Domain\Entities\OrderEntity;
-use App\Domain\Repositories\OrderRepositoryInterface;
-use App\Domain\Repositories\ProductRepositoryInterface;
 use App\Domain\Repositories\ShoppingCartRepositoryInterface;
+use App\Validators\Payment\Datafast\UnifiedDatafastValidator;
 use App\Infrastructure\External\PaymentGateway\DatafastService;
 use App\Models\DatafastPayment;
-use App\UseCases\Order\CreateOrderUseCase;
+use App\Services\CheckoutDataService;
+use App\Services\PaymentProcessingService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class DatafastController extends Controller
 {
-    private DatafastService $datafastService;
-
-    private ShoppingCartRepositoryInterface $cartRepository;
-
-    private OrderRepositoryInterface $orderRepository;
-
-    private ProductRepositoryInterface $productRepository;
-
-    private CreateOrderUseCase $createOrderUseCase;
-
     public function __construct(
-        DatafastService $datafastService,
-        ShoppingCartRepositoryInterface $cartRepository,
-        OrderRepositoryInterface $orderRepository,
-        ProductRepositoryInterface $productRepository,
-        CreateOrderUseCase $createOrderUseCase
+        private DatafastService $datafastService,
+        private ShoppingCartRepositoryInterface $cartRepository,
+        private CheckoutDataService $checkoutDataService,
+        private PaymentProcessingService $paymentProcessingService,
+        private UnifiedDatafastValidator $unifiedValidator
     ) {
-        $this->datafastService = $datafastService;
-        $this->cartRepository = $cartRepository;
-        $this->orderRepository = $orderRepository;
-        $this->productRepository = $productRepository;
-        $this->createOrderUseCase = $createOrderUseCase;
         $this->middleware('jwt.auth');
+    }
+
+    /**
+     * Almacenar CheckoutData temporal validado desde frontend
+     */
+    public function storeCheckoutData(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            // Validar datos de CheckoutData desde frontend
+            $validated = $request->validate([
+                'shippingData' => 'required|array',
+                'billingData' => 'required|array',
+                'items' => 'required|array|min:1',
+                'totals' => 'required|array',
+                'sessionId' => 'required|string|max:100',
+                'discountCode' => 'sometimes|string|nullable',
+                'discountInfo' => 'sometimes|array|nullable',
+            ]);
+
+            // Crear CheckoutData con expiración
+            $checkoutData = new \App\Domain\ValueObjects\CheckoutData(
+                userId: $user->id,
+                shippingData: $validated['shippingData'],
+                billingData: $validated['billingData'],
+                items: $validated['items'],
+                totals: $validated['totals'],
+                sessionId: $validated['sessionId'],
+                validatedAt: now(),
+                expiresAt: now()->addMinutes(30), // 30 minutos de expiración
+                discountCode: $validated['discountCode'] ?? null,
+                discountInfo: $validated['discountInfo'] ?? null
+            );
+
+            // Almacenar en CheckoutDataService
+            $cacheKey = $this->checkoutDataService->store($checkoutData);
+
+            // Trackear session_id por usuario para simulaciones posteriores
+            $userSessionsKey = "user_sessions_{$user->id}";
+            $userSessions = Cache::get($userSessionsKey, []);
+            $userSessions[] = $validated['sessionId'];
+            // Mantener solo las últimas 5 sessions para evitar acumulación
+            $userSessions = array_slice($userSessions, -5);
+            Cache::put($userSessionsKey, $userSessions, 1800); // 30 min igual que CheckoutData
+
+            Log::info('✅ CheckoutData almacenado exitosamente', [
+                'user_id' => $user->id,
+                'session_id' => $validated['sessionId'],
+                'cache_key' => $cacheKey,
+                'final_total' => $checkoutData->getFinalTotal(),
+                'items_count' => count($validated['items']),
+                'tracked_sessions' => count($userSessions),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'status' => 'success', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                'message' => 'CheckoutData almacenado exitosamente',
+                'data' => [
+                    'session_id' => $validated['sessionId'],
+                    'expires_at' => $checkoutData->expiresAt->toISOString(),
+                    'final_total' => $checkoutData->getFinalTotal(),
+                ],
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('❌ Error de validación en storeCheckoutData', [
+                'errors' => $e->errors(),
+                'user_id' => $request->user()?->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                'message' => 'Datos de checkout inválidos',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error al almacenar CheckoutData', [
+                'error' => $e->getMessage(),
+                'user_id' => $request->user()?->id,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                'message' => 'Error interno al almacenar checkout data',
+            ], 500);
+        }
     }
 
     /**
@@ -47,7 +124,7 @@ class DatafastController extends Controller
         try {
             $user = $request->user();
 
-            // ✅ CORREGIDO: Validar datos usando formato shippingAddress consistente con CheckoutController
+            // ✅ NUEVO: Validar datos incluyendo campos de CheckoutData temporal
             $validated = $request->validate([
                 'shippingAddress' => 'required|array',
                 'shippingAddress.street' => 'required|string|max:100', // street en lugar de address
@@ -67,16 +144,41 @@ class DatafastController extends Controller
                 'items' => 'sometimes|array',
                 'discount_code' => 'sometimes|string|nullable',
                 'discount_info' => 'sometimes|array|nullable',
+                // ✅ NUEVOS CAMPOS PARA CHECKOUTDATA TEMPORAL
+                'session_id' => 'sometimes|string|max:100',
+                'validated_at' => 'sometimes|string',
             ]);
 
-            // ✅ CORREGIDO: Usar items del request si están disponibles, sino buscar en carrito
+            // ✅ VALIDAR SI SE RECIBIÓ CHECKOUTDATA TEMPORAL
+            $hasSessionId = isset($validated['session_id']) && ! empty($validated['session_id']);
+            $hasValidatedAt = isset($validated['validated_at']) && ! empty($validated['validated_at']);
+            $isTemporalCheckout = $hasSessionId && $hasValidatedAt;
+
+            if ($isTemporalCheckout) {
+                Log::info('🎯 Datafast: Procesando CheckoutData temporal validado', [
+                    'session_id' => $validated['session_id'],
+                    'validated_at' => $validated['validated_at'],
+                    'user_id' => $user->id,
+                    'total' => $validated['total'],
+                ]);
+            }
+
+            // ✅ NUEVO: Requerir items cuando viene de CheckoutData temporal
             $cart = null;
             $hasRequestItems = isset($validated['items']) && is_array($validated['items']) && count($validated['items']) > 0;
 
+            if ($isTemporalCheckout && ! $hasRequestItems) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'CheckoutData temporal debe incluir items validados',
+                ], 400);
+            }
+
             if ($hasRequestItems) {
-                Log::info('✅ Datafast: Usando items del request (checkout directo)', [
+                Log::info('✅ Datafast: Usando items del CheckoutData validado', [
                     'items_count' => count($validated['items']),
-                    'items' => $validated['items'],
+                    'is_temporal' => $isTemporalCheckout,
+                    'session_id' => $validated['session_id'] ?? 'none',
                 ]);
             } else {
                 // Fallback: buscar carrito en base de datos
@@ -94,17 +196,18 @@ class DatafastController extends Controller
                 ]);
             }
 
-            // Usar el total calculado que viene del frontend (con descuentos, envío e IVA)
-            $calculatedTotal = $validated['total'];
+            // ✅ CORREGIDO: Asegurar que el total sea numérico con casting explícito
+            $calculatedTotal = (float) $validated['total'];
 
             // ✅ CORREGIDO: Log adaptado para ambos casos
             $logData = [
                 'user_id' => $user->id,
                 'calculated_total' => $calculatedTotal,
+                // ✅ CORREGIDO: Casting explícito en datos de logging también
                 'frontend_data' => [
-                    'subtotal' => $validated['subtotal'] ?? null,
-                    'shipping_cost' => $validated['shipping_cost'] ?? null,
-                    'tax' => $validated['tax'] ?? null,
+                    'subtotal' => isset($validated['subtotal']) ? (float) $validated['subtotal'] : null,
+                    'shipping_cost' => isset($validated['shipping_cost']) ? (float) $validated['shipping_cost'] : null,
+                    'tax' => isset($validated['tax']) ? (float) $validated['tax'] : null,
                 ],
             ];
 
@@ -128,9 +231,10 @@ class DatafastController extends Controller
                 'transaction_id' => $transactionId,
                 'amount' => $calculatedTotal,
                 'calculated_total' => $calculatedTotal,
-                'subtotal' => $validated['subtotal'] ?? null,
-                'shipping_cost' => $validated['shipping_cost'] ?? null,
-                'tax' => $validated['tax'] ?? null,
+                // ✅ CORREGIDO: Casting explícito de tipos numéricos opcionales
+                'subtotal' => isset($validated['subtotal']) ? (float) $validated['subtotal'] : null,
+                'shipping_cost' => isset($validated['shipping_cost']) ? (float) $validated['shipping_cost'] : null,
+                'tax' => isset($validated['tax']) ? (float) $validated['tax'] : null,
                 'currency' => 'USD',
                 'status' => 'pending',
                 'environment' => config('app.env') === 'production' ? 'production' : 'test',
@@ -184,11 +288,11 @@ class DatafastController extends Controller
                     'ip' => $request->ip(),
                 ],
                 'shipping' => [
-                    'address' => $validated['shippingAddress']['street'], // street en lugar de address
+                    'street' => $validated['shippingAddress']['street'], // ✅ CORREGIDO: usar 'street' consistente
                     'country' => strtoupper($validated['shippingAddress']['country']),
                 ],
                 'billing' => [
-                    'address' => $validated['shippingAddress']['street'], // street en lugar de address
+                    'street' => $validated['shippingAddress']['street'], // ✅ CORREGIDO: usar 'street' consistente
                     'country' => strtoupper($validated['shippingAddress']['country']),
                 ],
                 'items' => [],
@@ -292,7 +396,8 @@ class DatafastController extends Controller
                 $datafastPayment->update($updateData);
 
                 return response()->json([
-                    'status' => 'success', // ✅ CORREGIDO: Cambiar 'success' por 'status' para consistencia con CheckoutController
+                    'success' => true, // ✅ CORREGIDO: Usar success boolean como campo principal
+                    'status' => 'success', // ✅ AÑADIDO: Status descriptivo para consistencia con TypeScript
                     'data' => [
                         'checkout_id' => $result['checkout_id'],
                         'widget_url' => $result['widget_url'],
@@ -312,6 +417,7 @@ class DatafastController extends Controller
 
             return response()->json([
                 'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
                 'message' => $result['message'] ?? 'Error al crear checkout',
                 'error_code' => $result['error_code'] ?? null,
             ], 400);
@@ -323,6 +429,7 @@ class DatafastController extends Controller
 
             return response()->json([
                 'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
                 'message' => 'Datos de entrada inválidos',
                 'errors' => $e->errors(),
             ], 422);
@@ -335,6 +442,7 @@ class DatafastController extends Controller
 
             return response()->json([
                 'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
                 'message' => 'Error interno del servidor',
                 'debug_error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
@@ -342,7 +450,11 @@ class DatafastController extends Controller
     }
 
     /**
-     * Verificar el estado del pago por transaction ID (sin resource path)
+     * ✅ CONSULTAR ESTADO: Solo consulta estado sin procesamiento
+     *
+     * PROPÓSITO: Endpoint GET para debugging/monitoreo - No procesa órdenes
+     * USADO POR: Herramientas de administración, debugging
+     * DIFERENCIA: No crea órdenes ni procesa checkout, solo consulta estado
      */
     public function checkPaymentStatus($transactionId)
     {
@@ -366,7 +478,7 @@ class DatafastController extends Controller
                     'status' => 'error',
                     'message' => 'Transacción no encontrada',
                     'data' => [
-                        'payment_status' => 'not_found',
+                        'payment_status' => 'failed', // ✅ ESTANDARIZADO: not_found -> failed (estado válido)
                         'transaction_id' => $transactionId,
                     ],
                 ], 404);
@@ -383,7 +495,7 @@ class DatafastController extends Controller
                     'status' => 'success',
                     'message' => 'Pago completado exitosamente',
                     'data' => [
-                        'payment_status' => 'completed',
+                        'payment_status' => $datafastPayment->payment_status, // ✅ UNIFICADO: Usar accessor del modelo
                         'transaction_id' => $transactionId,
                         'order_id' => $datafastPayment->order_id,
                         'checkout_id' => $datafastPayment->checkout_id,
@@ -398,7 +510,7 @@ class DatafastController extends Controller
                     'status' => 'error',
                     'message' => $datafastPayment->error_message ?? 'Pago fallido',
                     'data' => [
-                        'payment_status' => 'failed',
+                        'payment_status' => 'failed', // ✅ ESTADO ESTÁNDAR: Definido en modelo
                         'transaction_id' => $transactionId,
                         'error_code' => $datafastPayment->result_code,
                     ],
@@ -436,7 +548,7 @@ class DatafastController extends Controller
                             'status' => 'success',
                             'message' => 'Pago verificado exitosamente',
                             'data' => [
-                                'payment_status' => 'completed',
+                                'payment_status' => $datafastPayment->payment_status, // ✅ UNIFICADO: Usar accessor del modelo
                                 'transaction_id' => $transactionId,
                                 'checkout_id' => $datafastPayment->checkout_id,
                                 'amount' => $result['amount'] ?? $datafastPayment->amount,
@@ -454,7 +566,7 @@ class DatafastController extends Controller
                     'status' => 'pending',
                     'message' => 'Pago pendiente de completar',
                     'data' => [
-                        'payment_status' => 'pending',
+                        'payment_status' => 'pending', // ✅ ESTADO ESTÁNDAR: Definido en modelo
                         'transaction_id' => $transactionId,
                         'checkout_id' => $datafastPayment->checkout_id,
                         'widget_url' => $datafastPayment->widget_url,
@@ -467,7 +579,7 @@ class DatafastController extends Controller
                 'status' => 'processing',
                 'message' => 'Pago en proceso',
                 'data' => [
-                    'payment_status' => $datafastPayment->status,
+                    'payment_status' => $datafastPayment->payment_status, // ✅ UNIFICADO: Usar accessor consistente
                     'transaction_id' => $transactionId,
                     'checkout_id' => $datafastPayment->checkout_id,
                 ],
@@ -483,7 +595,7 @@ class DatafastController extends Controller
                 'status' => 'error',
                 'message' => 'Error al verificar el estado del pago',
                 'data' => [
-                    'payment_status' => 'error',
+                    'payment_status' => 'error', // ✅ ESTADO ESTÁNDAR: Definido en modelo
                     'error' => config('app.debug') ? $e->getMessage() : 'Error interno',
                 ],
             ], 500);
@@ -491,21 +603,44 @@ class DatafastController extends Controller
     }
 
     /**
-     * Verificar el estado del pago después del proceso de Datafast
+     * ✅ VERIFICAR PAGO: Verificación completa con procesamiento de checkout
+     *
+     * PROPÓSITO: Endpoint POST principal para procesar pagos completados
+     * USADO POR: DatafastResultPage (frontend) tras pago exitoso
+     * FUNCIONALIDAD: Verifica pago + crea orden + procesa checkout completo
+     * DIFERENCIA: Este SÍ procesa y crea órdenes, es el flujo principal
      */
     public function verifyPayment(Request $request)
     {
         try {
+            // 🔍 LOGGING TEMPORAL: Capturar datos RAW de entrada para debug
+            Log::info('🚨 [DEBUG] DatafastController->verifyPayment() - RAW REQUEST DATA', [
+                'all_request_data' => $request->all(),
+                'has_simulate_success' => $request->has('simulate_success'),
+                'simulate_success_value' => $request->get('simulate_success'),
+                'simulate_success_type' => gettype($request->get('simulate_success')),
+                'headers' => $request->headers->all(),
+                'method' => $request->method(),
+                'content_type' => $request->header('Content-Type'),
+            ]);
+
             $validated = $request->validate([
                 'resource_path' => 'required|string',
                 'transaction_id' => 'required|string',
-                'calculated_total' => 'sometimes|numeric|min:0', // ✅ ACEPTAR TOTAL CALCULADO
+                'calculated_total' => 'sometimes|numeric|min:0', // ✅ OPCIONAL: Para verificación adicional de seguridad
+                'session_id' => 'sometimes|string|max:100',       // ✅ OPCIONAL: Para arquitectura centralizada
+                'simulate_success' => 'sometimes', // ✅ OPCIONAL: Para pruebas y simulaciones
             ]);
 
             $user = $request->user();
-            $simulateSuccess = $request->has('simulate_success') && $request->get('simulate_success') === 'true';
 
-            // ✅ BUSCAR REGISTRO DE TRANSACCIÓN DATAFAST
+            Log::info('🔍 DatafastController: Verificando pago con arquitectura centralizada', [
+                'transaction_id' => $validated['transaction_id'],
+                'user_id' => $user->id,
+                'has_session_id' => isset($validated['session_id']),
+            ]);
+
+            // Buscar registro de transacción Datafast
             $datafastPayment = DatafastPayment::where('transaction_id', $validated['transaction_id'])->first();
 
             if (! $datafastPayment) {
@@ -520,200 +655,165 @@ class DatafastController extends Controller
                 ], 404);
             }
 
-            // ✅ ACTUALIZAR RESOURCE_PATH Y MARCAR INTENTO DE VERIFICACIÓN
+            // Actualizar resource_path
             $datafastPayment->update([
                 'resource_path' => $validated['resource_path'],
                 'verification_completed_at' => now(),
             ]);
 
-            Log::info('Datafast: Verificando pago', [
-                'resource_path' => $validated['resource_path'],
-                'transaction_id' => $validated['transaction_id'],
-                'user_id' => $user->id,
-                'datafast_payment_id' => $datafastPayment->id,
-                'simulate_success' => $simulateSuccess,
+            // 🔍 LOGGING TEMPORAL: Datos después de validación
+            Log::info('🚨 [DEBUG] Datos después de validation', [
+                'validated_data' => $validated,
+                'has_simulate_success_validated' => isset($validated['simulate_success']),
+                'simulate_success_validated_value' => $validated['simulate_success'] ?? 'NOT_PRESENT',
+                'simulate_success_validated_type' => gettype($validated['simulate_success'] ?? null),
             ]);
 
-            // *** MODO SIMULACIÓN PARA PRUEBAS ***
-            if ($simulateSuccess && config('app.env') !== 'production') {
-                Log::info('Datafast: Modo simulación activado para pruebas');
-
-                // ✅ FIXED: Usar datos almacenados en DatafastPayment en lugar de verificar carrito
-                // El carrito puede estar vacío si ya se procesó otro pago, pero los datos están guardados
-                $cart = $this->cartRepository->findByUserId($user->id);
-
-                // Si no hay carrito o está vacío, usar el total calculado que viene en la request
-                if (! $cart || count($cart->getItems()) === 0) {
-                    if (! isset($validated['calculated_total'])) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'No se puede procesar la simulación: carrito vacío y sin total calculado',
-                        ], 400);
-                    }
-                    $totalToUse = $validated['calculated_total'];
-                    Log::info('Datafast: Usando total calculado porque el carrito está vacío', [
-                        'calculated_total' => $totalToUse,
-                        'reason' => 'cart_empty_or_missing',
-                    ]);
-                } else {
-                    // ✅ USAR TOTAL CALCULADO SI ESTÁ DISPONIBLE, sino el del carrito
-                    $totalToUse = $validated['calculated_total'] ?? $cart->getTotal();
-                }
-
-                // Crear orden simulada exitosa
-                $simulatedResult = [
-                    'success' => true,
-                    'payment_id' => 'SIMULATED_'.time().'_'.uniqid(),
-                    'status' => 'completed',
-                    'result_code' => '000.100.110',
-                    'message' => 'Pago simulado exitoso (Fase 1)',
-                    'amount' => $totalToUse, // ✅ USAR TOTAL CALCULADO CORRECTO
-                    'currency' => 'USD',
-                ];
-
-                Log::info('Datafast: Creando orden simulada', [
+            // ✅ NUEVO: Determinar session_id correcto ANTES de validar
+            $sessionId = $validated['session_id'] ?? null;
+            if (!$sessionId && isset($validated['simulate_success']) && $validated['simulate_success']) {
+                // Para simulaciones, buscar el session_id real basado en el usuario
+                $sessionId = $this->findSessionIdForUser($user->id, $validated['transaction_id']);
+                Log::info('🎯 Session_id para validación', [
+                    'found_session_id' => $sessionId,
                     'user_id' => $user->id,
-                    'simulated_payment_id' => $simulatedResult['payment_id'],
-                    'amount' => $simulatedResult['amount'],
-                    'calculated_total_used' => $totalToUse,
-                    'cart_total' => $cart->getTotal(),
+                    'transaction_id' => $validated['transaction_id'],
                 ]);
-
-                return $this->createOrderFromSuccessfulPayment($request, $simulatedResult, $validated, $datafastPayment);
             }
 
-            // *** VERIFICACIÓN REAL CON DATAFAST ***
-            $result = $this->datafastService->verifyPayment($validated['resource_path']);
+            // ✅ NUEVO: Recuperar CheckoutData con session_id correcto ANTES de validar
+            $checkoutData = null;
+            if ($sessionId) {
+                $checkoutData = $this->checkoutDataService->retrieve($sessionId);
+                if ($checkoutData) {
+                    Log::info('✅ CheckoutData recuperado para validación Datafast', [
+                        'session_id' => $sessionId,
+                        'total' => $checkoutData->getFinalTotal(),
+                    ]);
+                }
+            }
 
-            Log::info('Datafast: Resultado de verificación real', $result);
-
-            // ✅ ACTUALIZAR REGISTRO CON DATOS DE VERIFICACIÓN
-            $datafastPayment->update([
-                'verification_data' => $result,
-                'result_code' => $result['result_code'] ?? null,
-                'result_description' => $result['message'] ?? null,
+            // ✅ CORREGIDO: VALIDACIÓN UNIFICADA con monto correcto del CheckoutData
+            $paymentData = array_merge($validated, [
+                'calculated_total' => $checkoutData?->getFinalTotal() ??
+                                    (isset($validated['calculated_total']) ? (float) $validated['calculated_total'] : null),
             ]);
 
-            if ($result['success']) {
-                // ✅ MARCAR COMO PROCESANDO ANTES DE CREAR ORDEN
-                $datafastPayment->markAsProcessing();
+            Log::info('🔄 Usando validador unificado Datafast', [
+                'transaction_id' => $validated['transaction_id'],
+                'has_simulate_success' => isset($validated['simulate_success']),
+                'has_resource_path' => isset($validated['resource_path']),
+                'calculated_total' => $paymentData['calculated_total'],
+            ]);
 
-                // Pago exitoso - crear orden
-                return $this->createOrderFromSuccessfulPayment($request, $result, $validated, $datafastPayment);
-            } else {
-                // Manejar casos específicos de error
-                $resultCode = $result['result_code'] ?? '';
+            // Validar con el validador unificado
+            $validationResult = $this->unifiedValidator->validatePayment($paymentData);
 
-                // Error 800.900.300 es común en Fase 1 cuando no hay transacción real
-                if ($resultCode === '800.900.300') {
-                    Log::info('Datafast: Error de autorización 800.900.300 - típico de Fase 1', [
-                        'transaction_id' => $validated['transaction_id'],
-                        'user_id' => $user->id,
-                    ]);
+            // Actualizar registro con resultado unificado
+            $datafastPayment->update([
+                'verification_data' => [
+                    'validation_type' => 'unified',
+                    'result' => $validationResult->toArray(),
+                ],
+                'result_code' => $validationResult->metadata['result_code'] ?? null,
+                'result_description' => $validationResult->errorMessage ?? 'Verificación completada',
+            ]);
 
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No se completó una transacción de pago. En modo de prueba (Fase 1), esto es normal si no se realizó un pago real con tarjeta.',
-                        'result_code' => $resultCode,
-                        'is_phase_1_error' => true,
-                        'suggestion' => 'Para probar el flujo completo, use el botón "Simular Pago Exitoso" o implemente la Fase 2 con datos reales.',
-                    ], 400);
-                }
+            if ($validationResult->isSuccessful()) {
+                // Procesar pago exitoso con servicio centralizado
+                Log::info('✅ Validación Datafast exitosa, procesando con PaymentProcessingService', [
+                    'transaction_id' => $validated['transaction_id'],
+                    'payment_method' => $validationResult->paymentMethod,
+                    'validation_type' => $validationResult->validationType,
+                ]);
 
-                // Otros códigos de error
-                $message = $result['message'] ?? 'Pago no completado';
+                // Usar session_id ya calculado (evitar duplicación)
+                $sessionId = $sessionId ?? 'datafast_' . $validated['transaction_id'];
 
-                // ✅ FIXED: Auto-detectar simulaciones basadas en código 000.200.000
-                if ($resultCode === '000.200.000') {
-                    Log::info('Datafast: Código 000.200.000 detectado - analizando contexto', [
-                        'result_code' => $resultCode,
-                        'transaction_id' => $validated['transaction_id'],
-                        'datafast_payment_id' => $datafastPayment->id,
-                        'environment' => config('app.env'),
-                    ]);
+                $processingResult = $this->paymentProcessingService->processSuccessfulPayment(
+                    $validationResult,
+                    $sessionId
+                );
 
-                    // En desarrollo, 000.200.000 generalmente significa checkout sin transacción real
-                    // Lo cual es el comportamiento del botón de prueba, así que simulamos éxito
-                    if (config('app.env') !== 'production') {
-                        Log::info('Datafast: Auto-simulando éxito para 000.200.000 en desarrollo');
+                if ($processingResult['success']) {
+                    // Marcar como completado y vincular orden
+                    $datafastPayment->markAsCompleted(
+                        $validationResult->metadata['payment_id'] ?? null,
+                        $validationResult->metadata['result_code'] ?? 'completed',
+                        'Orden creada exitosamente con arquitectura centralizada'
+                    );
 
-                        // Usar la misma lógica de simulación exitosa
-                        $cart = $this->cartRepository->findByUserId($user->id);
+                    $datafastPayment->update(['order_id' => $processingResult['order']['id']]);
 
-                        $totalToUse = $validated['calculated_total'] ?? $cart->getTotal() ?? 1.0;
-
-                        $simulatedResult = [
-                            'success' => true,
-                            'payment_id' => 'SIMULATED_'.time().'_'.uniqid(),
-                            'status' => 'completed',
-                            'result_code' => '000.100.110',
-                            'message' => 'Pago simulado exitosamente (auto-detectado)',
-                            'amount' => $totalToUse,
-                            'currency' => 'USD',
-                            'total' => $totalToUse,
-                        ];
-
-                        Log::info('Datafast: Auto-simulación activada para transacción pendiente', [
-                            'original_code' => $resultCode,
-                            'simulated_result' => $simulatedResult,
-                            'calculated_total_used' => $totalToUse,
-                            'cart_total' => $cart->getTotal(),
-                        ]);
-
-                        return $this->createOrderFromSuccessfulPayment($request, $simulatedResult, $validated, $datafastPayment);
+                    // Limpiar CheckoutData temporal si existe
+                    if ($sessionId && $sessionId !== 'datafast_' . $validated['transaction_id']) {
+                        $this->checkoutDataService->deleteCheckoutData($sessionId);
                     }
 
-                    // En producción, mantener el comportamiento actual (transacción realmente pendiente)
-                    $message = 'La transacción está pendiente de procesamiento';
-
-                    $datafastPayment->update([
-                        'result_code' => $resultCode,
-                        'result_description' => $message,
-                        'status' => 'pending',
-                    ]);
-
-                    Log::info('Datafast: Transacción pendiente en producción', [
-                        'result_code' => $resultCode,
+                    Log::info('✅ Pago Datafast procesado exitosamente', [
+                        'order_id' => $processingResult['order']['id'],
                         'transaction_id' => $validated['transaction_id'],
-                        'datafast_payment_id' => $datafastPayment->id,
                     ]);
 
                     return response()->json([
-                        'success' => false,
-                        'message' => $message,
-                        'result_code' => $resultCode,
-                        'status' => 'pending',
-                        'transaction_id' => $validated['transaction_id'],
-                    ], 202);
-                } elseif ($resultCode === '000.200.100') {
-                    $message = 'El checkout fue creado exitosamente pero no se completó el pago. Por favor, complete el formulario de pago.';
-                } elseif ($resultCode && str_starts_with($resultCode, '800')) {
-                    $message = 'El pago fue rechazado. Por favor, verifique sus datos e intente nuevamente.';
+                        'success' => true, // ✅ AÑADIDO: Campo principal boolean
+                        'status' => 'success',
+                        'data' => [
+                            'order_id' => $processingResult['order']['id'],
+                            'order_number' => $processingResult['order']['number'],
+                            'total' => $processingResult['order']['total'],
+                            'payment_status' => $datafastPayment->payment_status, // ✅ UNIFICADO: Usar accessor del modelo
+                            'payment_id' => $validationResult->metadata['payment_id'] ?? '',
+                            'transaction_id' => $validated['transaction_id'], // ✅ AÑADIDO: Requerido por TypeScript
+                            'processed_at' => now()->toISOString(), // ✅ AÑADIDO: Timestamp requerido por TypeScript
+                        ],
+                        'message' => 'Pago procesado exitosamente',
+                    ]);
                 }
 
-                // ✅ MARCAR COMO FALLIDO EN BD
-                $datafastPayment->markAsFailed($message, $resultCode);
-
-                Log::warning('Datafast: Pago no exitoso', [
-                    'result' => $result,
-                    'transaction_id' => $validated['transaction_id'],
-                    'datafast_payment_id' => $datafastPayment->id,
-                ]);
+                // Error en procesamiento
+                $datafastPayment->markAsFailed(
+                    $processingResult['message'] ?? 'Error en procesamiento',
+                    'processing_failed'
+                );
 
                 return response()->json([
                     'success' => false,
-                    'message' => $message,
-                    'result_code' => $resultCode,
+                    'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                    'message' => $processingResult['message'] ?? 'Error al procesar el pago',
                 ], 400);
             }
+
+            // Pago fallido
+            $datafastPayment->markAsFailed(
+                $validationResult->errorMessage ?? 'Validación de pago fallida',
+                $validationResult->errorCode ?? 'validation_failed'
+            );
+
+            Log::warning('⚠️ Validación Datafast fallida', [
+                'transaction_id' => $validated['transaction_id'],
+                'error_code' => $validationResult->errorCode,
+                'error_message' => $validationResult->errorMessage,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                'message' => $validationResult->errorMessage,
+                'error_code' => $validationResult->errorCode,
+                'result_code' => $validationResult->errorCode, // ✅ AÑADIDO: Alias para compatibilidad TypeScript
+                'metadata' => $validationResult->metadata,
+            ], 400);
+
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Datafast: Error de validación en verificación', [
+            Log::error('Datafast: Error de validación', [
                 'errors' => $e->errors(),
                 'user_id' => $request->user()?->id,
             ]);
 
             return response()->json([
                 'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
                 'message' => 'Datos de entrada inválidos',
                 'errors' => $e->errors(),
             ], 422);
@@ -727,259 +827,90 @@ class DatafastController extends Controller
 
             return response()->json([
                 'success' => false,
+                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
                 'message' => 'Error al verificar el pago: '.$e->getMessage(),
                 'debug_error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
-    /**
-     * Crear orden a partir de un pago exitoso usando ProcessCheckoutUseCase
-     */
-    private function createOrderFromSuccessfulPayment(Request $request, array $result, array $validated, ?DatafastPayment $datafastPayment = null): \Illuminate\Http\JsonResponse
-    {
-        try {
-            $user = $request->user();
-
-            // Obtener carrito
-            $cart = $this->cartRepository->findByUserId($user->id);
-
-            if (! $cart || count($cart->getItems()) === 0) {
-                throw new \Exception('El carrito está vacío');
-            }
-
-            // ✅ USAR EL TOTAL CALCULADO ALMACENADO EN DATAFAST_PAYMENT (DATOS ORIGINALES DEL FRONTEND)
-            $calculatedTotal = $datafastPayment->calculated_total ?? $validated['calculated_total'] ?? $result['amount'] ?? $cart->getTotal();
-
-            Log::info('✅ DATAFAST: Usando ProcessCheckoutUseCase para cálculos centralizados', [
-                'user_id' => $user->id,
-                'transaction_id' => $validated['transaction_id'],
-                'payment_id' => $result['payment_id'],
-                'calculated_total' => $calculatedTotal,
-                'cart_total' => $cart->getTotal(),
-                'result_amount' => $result['amount'] ?? 'N/A',
-            ]);
-
-            // Preparar items del carrito para ProcessCheckoutUseCase
-            $cartItems = [];
-            foreach ($cart->getItems() as $item) {
-                $cartItems[] = [
-                    'product_id' => $item->getProductId(),
-                    'quantity' => $item->getQuantity(),
-                    'price' => $item->getPrice(),
-                    'subtotal' => $item->getSubtotal(),
-                ];
-            }
-
-            // Preparar datos de pago
-            $paymentData = [
-                'method' => 'datafast',
-                'transaction_id' => $validated['transaction_id'],
-                'payment_id' => $result['payment_id'],
-                'status' => 'completed',
-                'amount' => $calculatedTotal,
-                'skip_price_verification' => true, // ✅ Saltarse verificación de precios para Datafast
-            ];
-
-            // 🚨 CRÍTICO: Verificar que $datafastPayment existe antes de usar sus propiedades
-            if (!$datafastPayment) {
-                throw new \Exception('No se encontraron datos de pago de Datafast para crear la orden');
-            }
-
-            // Preparar datos de envío usando datos reales del usuario
-            $originalRequestData = $datafastPayment->request_data ?? [];
-            $originalShippingData = $originalRequestData['shipping_data'] ?? [];
-
-            $shippingData = [
-                'name' => $originalShippingData['name'] ?? ($datafastPayment->customer_given_name . ' ' . $datafastPayment->customer_surname), // Nombre completo del receptor
-                'street' => $originalShippingData['address'] ?? $datafastPayment->shipping_address, // Fix: usar 'street' en lugar de 'address'
-                'city' => $datafastPayment->shipping_city,
-                'state' => $datafastPayment->shipping_city, // Usar city como state ya que Ecuador no maneja estados
-                'country' => $datafastPayment->shipping_country,
-                'postal_code' => $originalShippingData['postal_code'] ?? null, // Usar datos originales del frontend
-                'phone' => $datafastPayment->customer_phone,
-                'identification' => $datafastPayment->shipping_identification ?? $datafastPayment->customer_doc_id, // ✅ DATO CRÍTICO PARA SRI
-            ];
-
-            // Preparar datos de facturación (para mayoría de casos, billing = shipping en Ecuador)
-            $billingData = [
-                'name' => $originalShippingData['name'] ?? ($datafastPayment->customer_given_name . ' ' . $datafastPayment->customer_surname), // Nombre completo del receptor
-                'street' => $originalShippingData['address'] ?? $datafastPayment->shipping_address, // Fix: usar 'street' en lugar de 'address'
-                'city' => $datafastPayment->shipping_city,
-                'state' => $datafastPayment->shipping_city, // Ecuador no usa states
-                'country' => $datafastPayment->shipping_country,
-                'postal_code' => $originalShippingData['postal_code'] ?? null, // Usar datos originales del frontend
-                'phone' => $datafastPayment->customer_phone,
-                'identification' => $datafastPayment->shipping_identification ?? $datafastPayment->customer_doc_id,
-            ];
-
-            // 💳 LOG: Preparar billing data para Datafast
-            Log::info('💳 DATAFAST: Preparando billing data', [
-                'datafast_payment_id' => $datafastPayment->id,
-                'shipping_address' => $datafastPayment->shipping_address,
-                'billing_constructed' => $billingData,
-                'same_as_shipping' => $billingData === $shippingData,
-                'billing_identification' => $billingData['identification']
-            ]);
-
-            // Calcular subtotal desde los items del carrito
-            $cartSubtotal = 0;
-            foreach ($cart->getItems() as $item) {
-                $cartSubtotal += $item->getSubtotal();
-            }
-
-            // ✅ USAR TOTALES CON NOMBRES CORRECTOS PARA PriceVerificationService
-            $calculatedTotals = [
-                'final_total' => $datafastPayment->calculated_total ?? $calculatedTotal,
-                'subtotal_with_discounts' => $datafastPayment->subtotal ?? $cartSubtotal,
-                'iva_amount' => $datafastPayment->tax ?? 0,
-                'shipping_cost' => $datafastPayment->shipping_cost ?? 0,
-            ];
-
-            // ✅ $billingData ya está definido arriba con datos reales del frontend
-
-            // ✅ USAR ProcessCheckoutUseCase PARA CÁLCULOS CENTRALIZADOS
-            try {
-                // Usar el use case centralizado que maneja todos los cálculos correctamente
-                $checkoutResult = app(\App\UseCases\Checkout\ProcessCheckoutUseCase::class)->execute(
-                    $user->id,
-                    $paymentData,
-                    $shippingData,
-                    $billingData,
-                    $cartItems,
-                    null, // seller_id se detecta automáticamente
-                    null, // discount_code
-                    $calculatedTotals
-                );
-
-                Log::info('✅ DATAFAST: ProcessCheckoutUseCase ejecutado exitosamente', [
-                    'order_id' => $checkoutResult['order']->getId(),
-                    'order_number' => $checkoutResult['order']->getOrderNumber(),
-                    'total' => $checkoutResult['order']->getTotal(),
-                    'seller_orders_created' => count($checkoutResult['seller_orders'] ?? []),
-                ]);
-
-                // Usar los resultados del ProcessCheckoutUseCase
-                $order = $checkoutResult['order'];
-
-            } catch (\Exception $checkoutError) {
-                Log::error('❌ DATAFAST: ProcessCheckoutUseCase falló - NO se creará orden', [
-                    'error' => $checkoutError->getMessage(),
-                    'user_id' => $user->id,
-                    'transaction_id' => $validated['transaction_id'],
-                ]);
-
-                // ❌ NO CREAR ORDEN SI HAY PROBLEMAS DE SEGURIDAD
-                // Marcar el pago de Datafast como fallido
-                if ($datafastPayment) {
-                    $datafastPayment->markAsFailed(
-                        'Error en validación: '.$checkoutError->getMessage(),
-                        'validation_failed'
-                    );
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Error en validación del pago: '.$checkoutError->getMessage(),
-                    'error_type' => 'validation_error',
-                ], 400);
-            }
-
-            // ✅ ACTUALIZAR REGISTRO DATAFAST CON ORDEN COMPLETADA
-            if ($datafastPayment) {
-                $datafastPayment->markAsCompleted(
-                    $result['payment_id'] ?? null,
-                    $result['result_code'] ?? 'completed',
-                    'Orden creada exitosamente'
-                );
-
-                // Vincular orden con transacción Datafast
-                $datafastPayment->update(['order_id' => $order->getId()]);
-
-                Log::info('Datafast: Transacción completada y vinculada a orden', [
-                    'datafast_payment_id' => $datafastPayment->id,
-                    'order_id' => $order->getId(),
-                    'transaction_id' => $validated['transaction_id'],
-                    'payment_id' => $result['payment_id'] ?? null,
-                ]);
-            }
-
-            // Actualizar con información de pago de Datafast
-            $this->orderRepository->updatePaymentInfo($order->getId(), [
-                'payment_id' => $result['payment_id'],
-                'payment_status' => 'completed',
-                'payment_method' => 'datafast',
-                'status' => 'processing',
-                'datafast_transaction_id' => $validated['transaction_id'],
-                'datafast_result_code' => $result['result_code'] ?? 'simulated',
-            ]);
-
-            // Actualizar stock de productos
-            foreach ($cart->getItems() as $item) {
-                try {
-                    $this->productRepository->updateStock(
-                        $item->getProductId(),
-                        $item->getQuantity(),
-                        'decrease'
-                    );
-                } catch (\Exception $e) {
-                    Log::warning('Error al actualizar stock del producto', [
-                        'product_id' => $item->getProductId(),
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            // Limpiar carrito
-            $this->cartRepository->clearCart($cart->getId());
-
-            Log::info('Datafast: Orden creada exitosamente', [
-                'order_id' => $order->getId(),
-                'order_number' => $order->getOrderNumber(),
-                'user_id' => $user->id,
-            ]);
-
-            return response()->json([
-                'status' => 'success', // ✅ CORREGIDO: Cambiar 'success' por 'status' para consistencia
-                'data' => [
-                    'order_id' => $order->getId(),
-                    'order_number' => $order->getOrderNumber(),
-                    'total' => $order->getTotal(),
-                    'payment_status' => 'completed',
-                    'payment_id' => $result['payment_id'],
-                ],
-                'message' => 'Pago procesado exitosamente',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('❌ Error en createOrderFromSuccessfulPayment', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'user_id' => $request->user()?->id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al crear la orden: '.$e->getMessage(),
-            ], 500);
-        }
-    }
 
     /**
-     * Webhook para recibir notificaciones de Datafast (si es necesario)
+     * Webhook para recibir notificaciones de Datafast usando arquitectura centralizada
      */
     public function webhook(Request $request)
     {
         try {
-            Log::info('Datafast Webhook recibido', $request->all());
+            Log::info('🔔 Datafast Webhook recibido con arquitectura centralizada', [
+                'payload' => $request->all(),
+                'headers' => $request->headers->all(),
+            ]);
 
-            // Procesar webhook según documentación de Datafast
-            // (Este endpoint se usaría si Datafast envía notificaciones)
+            // Validar webhook con validador unificado
+            $validationResult = $this->unifiedValidator->validatePayment($request->all());
 
-            return response()->json(['status' => 'received']);
+            if ($validationResult->isSuccessful()) {
+                Log::info('✅ Webhook Datafast validado exitosamente', [
+                    'transaction_id' => $validationResult->metadata['transaction_id'] ?? 'N/A',
+                    'payment_id' => $validationResult->metadata['payment_id'] ?? 'N/A',
+                ]);
+
+                // Buscar usuario asociado al transaction_id si disponible
+                $transactionId = $validationResult->metadata['transaction_id'] ?? null;
+                $userId = null;
+
+                if ($transactionId) {
+                    $datafastPayment = DatafastPayment::where('transaction_id', $transactionId)->first();
+                    if ($datafastPayment) {
+                        $userId = $datafastPayment->user_id;
+                    }
+                }
+
+                if ($userId) {
+                    // Procesar webhook con usuario identificado
+                    $processingResult = $this->paymentProcessingService->processSuccessfulPayment(
+                        $validationResult,
+                        $userId,
+                        null // No CheckoutData en webhooks
+                    );
+
+                    if ($processingResult['success']) {
+                        Log::info('✅ Webhook Datafast procesado exitosamente', [
+                            'order_id' => $processingResult['order']['id'],
+                            'transaction_id' => $transactionId,
+                        ]);
+
+                        return response()->json(['status' => 'processed']);
+                    }
+
+                    Log::warning('⚠️ Error procesando webhook Datafast', [
+                        'transaction_id' => $transactionId,
+                        'message' => $processingResult['message'] ?? 'Error desconocido',
+                    ]);
+
+                    return response()->json(['status' => 'error', 'message' => 'Processing failed'], 400);
+                }
+
+                Log::warning('⚠️ Webhook Datafast válido pero sin usuario asociado', [
+                    'transaction_id' => $transactionId,
+                ]);
+
+                return response()->json(['status' => 'received', 'message' => 'No user found']);
+            }
+
+            Log::warning('⚠️ Webhook Datafast inválido', [
+                'error_code' => $validationResult->errorCode,
+                'error_message' => $validationResult->errorMessage,
+                'payload' => $request->all(),
+            ]);
+
+            return response()->json(['status' => 'invalid'], 400);
+
         } catch (\Exception $e) {
             Log::error('Error en webhook de Datafast', [
                 'error' => $e->getMessage(),
                 'payload' => $request->all(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json(['error' => 'Internal error'], 500);
@@ -987,205 +918,53 @@ class DatafastController extends Controller
     }
 
     /**
-     * Método fallback para crear orden directamente (sin ProcessCheckoutUseCase)
-     * Solo se usa si ProcessCheckoutUseCase falla por conflictos de transacción
+     * Busca el session_id real para un usuario y transacción específica
+     * Útil para simulaciones donde necesitamos encontrar el CheckoutData original
      */
-    private function createOrderDirectly($cart, $user, $calculatedTotal, $paymentData, $shippingData)
-    {
-        Log::info('🔄 DATAFAST: Creando orden con método fallback directo', [
-            'user_id' => $user->id,
-            'calculated_total' => $calculatedTotal,
-            'cart_items' => count($cart->getItems()),
-        ]);
-
-        // ✅ CRÍTICO: Usar PricingCalculatorService para cálculos correctos
-        $cartItems = [];
-        foreach ($cart->getItems() as $item) {
-            $cartItems[] = [
-                'product_id' => $item->getProductId(),
-                'quantity' => $item->getQuantity(),
-            ];
-        }
-
-        // Calcular pricing breakdown usando el servicio centralizado
-        $pricingService = app(\App\Domain\Services\PricingCalculatorService::class);
-        $pricingResult = $pricingService->calculateCartTotals($cartItems, $user->id, null);
-
-        Log::info('✅ DATAFAST FALLBACK: PricingCalculatorService calculó breakdowns', [
-            'subtotal_original' => $pricingResult['subtotal_original'],
-            'subtotal_with_discounts' => $pricingResult['subtotal_with_discounts'],
-            'seller_discounts' => $pricingResult['seller_discounts'],
-            'volume_discounts' => $pricingResult['volume_discounts'],
-            'shipping_cost' => $pricingResult['shipping_cost'],
-            'iva_amount' => $pricingResult['iva_amount'],
-            'final_total' => $pricingResult['final_total'],
-        ]);
-
-        // Preparar datos de la orden con breakdowns correctos
-        $orderItems = [];
-        foreach ($cart->getItems() as $item) {
-            $product = $this->productRepository->findById($item->getProductId());
-            $sellerId = $product ? $product->getSellerId() : null;
-
-            $orderItems[] = [
-                'product_id' => $item->getProductId(),
-                'quantity' => $item->getQuantity(),
-                'price' => $item->getPrice(),
-                'subtotal' => $item->getSubtotal(),
-                'seller_id' => $sellerId,
-            ];
-        }
-
-        // ✅ CRÍTICO: Crear OrderEntity con todos los campos de pricing en orden correcto
-        $order = OrderEntity::create(
-            $user->id,
-            null, // seller_id (se maneja por items)
-            $orderItems,
-            $pricingResult['final_total'], // total
-            'processing', // status
-            $shippingData,
-            $pricingResult['subtotal_original'], // original_total
-            $pricingResult['volume_discounts'], // volume_discount_savings
-            false, // volume_discounts_applied
-            $pricingResult['seller_discounts'], // seller_discount_savings
-            $pricingResult['subtotal_with_discounts'], // subtotal_products
-            $pricingResult['iva_amount'], // iva_amount
-            $pricingResult['shipping_cost'], // shipping_cost
-            $pricingResult['total_discounts'], // total_discounts
-            $pricingResult['free_shipping'], // free_shipping
-            null, // free_shipping_threshold
-            null // pricing_breakdown
-        );
-
-        // Guardar orden sin transacciones
-        $order = $this->orderRepository->saveWithoutTransaction($order);
-
-        Log::info('✅ DATAFAST FALLBACK: Orden creada con breakdowns correctos', [
-            'order_id' => $order->getId(),
-            'original_total' => $order->getOriginalTotal(),
-            'subtotal_products' => $order->getSubtotalProducts(),
-            'iva_amount' => $order->getIvaAmount(),
-            'shipping_cost' => $order->getShippingCost(),
-            'total_discounts' => $order->getTotalDiscounts(),
-            'final_total' => $order->getTotal(),
-        ]);
-
-        // Crear seller_orders manualmente
-        $this->createSellerOrdersForOrder($order, $cart->getItems(), $calculatedTotal);
-
-        // ✅ CRÍTICO: Disparar evento OrderCreated para generación de facturas
-        Log::info('🚀 DATAFAST FALLBACK: Disparando evento OrderCreated para generación de facturas', [
-            'order_id' => $order->getId(),
-            'user_id' => $order->getUserId(),
-            'seller_id' => $order->getSellerId(),
-        ]);
-
-        event(new \App\Events\OrderCreated(
-            $order->getId(),
-            $order->getUserId(),
-            $order->getSellerId(),
-            ['method' => 'datafast_fallback']
-        ));
-
-        Log::info('✅ DATAFAST FALLBACK: Evento OrderCreated disparado');
-
-        return $order;
-    }
-
-    /**
-     * Crear seller_orders para una orden (usado en fallback)
-     */
-    private function createSellerOrdersForOrder($order, $cartItems, $calculatedTotal)
+    private function findSessionIdForUser(int $userId, string $transactionId): ?string
     {
         try {
-            Log::info('🛒 DATAFAST: Creando seller_orders para orden fallback', [
-                'order_id' => $order->getId(),
-                'order_number' => $order->getOrderNumber(),
-                'items_count' => count($cartItems),
-                'calculated_total' => $calculatedTotal,
+            // Buscar sessions trackeadas del usuario
+            $userSessionsKey = "user_sessions_{$userId}";
+            $userSessions = Cache::get($userSessionsKey, []);
+
+            Log::info('🔍 Buscando session_id para simulación', [
+                'user_id' => $userId,
+                'transaction_id' => $transactionId,
+                'user_sessions_count' => count($userSessions),
             ]);
 
-            // Agrupar items por seller_id
-            $itemsBySeller = [];
-            foreach ($cartItems as $item) {
-                $product = $this->productRepository->findById($item->getProductId());
-                if ($product) {
-                    $sellerId = $product->getSellerId();
-                    if (! isset($itemsBySeller[$sellerId])) {
-                        $itemsBySeller[$sellerId] = [];
+            // Revisar cada session del usuario
+            foreach ($userSessions as $sessionId) {
+                $cacheKey = "checkout_data_{$sessionId}";
+                $checkoutData = Cache::get($cacheKey);
+
+                if ($checkoutData) {
+                    // Verificar si esta sesión pertenece al usuario correcto
+                    if (isset($checkoutData['userId']) && $checkoutData['userId'] == $userId) {
+                        Log::info('✅ Session_id encontrado para simulación', [
+                            'session_id' => $sessionId,
+                            'user_id' => $userId,
+                            'checkout_total' => $checkoutData['totals']['final_total'] ?? 'N/A',
+                        ]);
+                        return $sessionId;
                     }
-                    $itemsBySeller[$sellerId][] = [
-                        'item' => $item,
-                        'product' => $product,
-                    ];
                 }
             }
 
-            // Distribuir totales entre sellers (proporcional a sus items)
-            $totalItemsValue = array_sum(array_map(function ($items) {
-                return array_sum(array_map(fn ($i) => $i['item']->getSubtotal(), $items));
-            }, $itemsBySeller));
+            Log::warning('⚠️ No se encontró session_id válido para simulación', [
+                'user_id' => $userId,
+                'transaction_id' => $transactionId,
+                'checked_sessions' => count($userSessions),
+            ]);
 
-            // Crear seller_order para cada seller
-            foreach ($itemsBySeller as $sellerId => $sellerItems) {
-                $sellerSubtotal = 0;
-                $originalTotal = 0;
-
-                foreach ($sellerItems as $sellerItem) {
-                    $sellerSubtotal += $sellerItem['item']->getSubtotal();
-                    $originalTotal += $sellerItem['product']->getPrice() * $sellerItem['item']->getQuantity();
-                }
-
-                // Calcular proporción de costos adicionales (envío + IVA)
-                $proportion = $totalItemsValue > 0 ? ($sellerSubtotal / $totalItemsValue) : 1;
-                $additionalCosts = $calculatedTotal - $totalItemsValue; // Envío + IVA
-                $sellerShipping = $additionalCosts * $proportion * 0.85; // ~85% es envío
-                $sellerIVA = $additionalCosts * $proportion * 0.15; // ~15% es IVA
-                $sellerTotal = $sellerSubtotal + $sellerShipping + $sellerIVA;
-
-                // ✅ CRÍTICO: Crear seller_order con distribución correcta de costos
-                $sellerOrder = \App\Models\SellerOrder::create([
-                    'order_id' => $order->getId(),
-                    'seller_id' => $sellerId,
-                    'order_number' => $order->getOrderNumber().'-S'.$sellerId,
-                    'status' => 'processing',
-                    'total' => round($sellerTotal, 2),
-                    'original_total' => $originalTotal,
-                    'subtotal_products' => $sellerSubtotal,
-                    'subtotal' => $sellerSubtotal,
-                    'shipping_cost' => round($sellerShipping, 2),
-                    'iva_amount' => round($sellerIVA, 2),
-                    'total_discounts' => $originalTotal - $sellerSubtotal,
-                    'payment_status' => 'completed',
-                    'payment_method' => 'datafast',
-                    'shipping_data' => $order->getShippingData(),
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-
-                // Actualizar claves foráneas
-                \App\Models\Order::where('id', $order->getId())
-                    ->update(['seller_order_id' => $sellerOrder->id]);
-
-                \App\Models\OrderItem::where('order_id', $order->getId())
-                    ->where('seller_id', $sellerId)
-                    ->update(['seller_order_id' => $sellerOrder->id]);
-
-                Log::info('✅ DATAFAST: Seller order fallback creado', [
-                    'seller_order_id' => $sellerOrder->id,
-                    'seller_id' => $sellerId,
-                    'subtotal' => $sellerSubtotal,
-                    'shipping' => round($sellerShipping, 2),
-                    'iva' => round($sellerIVA, 2),
-                    'total' => round($sellerTotal, 2),
-                ]);
-            }
-
+            return null;
         } catch (\Exception $e) {
-            Log::error('❌ DATAFAST: Error creando seller_orders fallback', [
-                'order_id' => $order->getId(),
+            Log::error('❌ Error buscando session_id para simulación', [
+                'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
+            return null;
         }
     }
 }

@@ -39,7 +39,7 @@ class Kernel extends HttpKernel
             \Illuminate\Foundation\Http\Middleware\ValidatePostSize::class,
             \App\Http\Middleware\TrimStrings::class,
             \Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull::class,
-            // \App\Http\Middleware\SecurityHeadersMiddleware::class, // TEMPORALMENTE DESACTIVADO PARA DATAFAST
+            \App\Http\Middleware\SecurityHeadersMiddleware::class, // OPTIMIZADO: Habilitado con lógica flexible
         ],
 
         'api' => [
@@ -74,6 +74,7 @@ class Kernel extends HttpKernel
         'jwt.auth' => \App\Http\Middleware\JwtMiddleware::class, // Add JWT middleware
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
         'seller' => \App\Http\Middleware\SellerMiddleware::class,
+        'payment' => \App\Http\Middleware\PaymentRoleMiddleware::class,
         'admin.or.owner' => \App\Http\Middleware\AdminOrOwner::class,
         'track.interaction' => \App\Http\Middleware\TrackInteractionMiddleware::class, // Auto-tracking middleware for user interactions
         'maintenance' => \App\Http\Middleware\MaintenanceMiddleware::class, // Development maintenance mode

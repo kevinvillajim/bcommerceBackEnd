@@ -296,7 +296,7 @@ class MailManager
             // Prepare recipients: customer + backup email
             $recipients = [
                 $invoice->customer_email, // Cliente de la factura
-                'facturacion@comersia.app' // Backup empresa
+                'facturacion@comersia.app', // Backup empresa
             ];
 
             // Send to each recipient

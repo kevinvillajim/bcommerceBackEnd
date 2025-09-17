@@ -58,7 +58,7 @@ class DeunaPaymentController extends Controller
     public function createPayment(Request $request): JsonResponse
     {
         try {
-            // Validate request data
+            // ✅ NUEVO: Validar datos incluyendo CheckoutData temporal
             $validator = Validator::make($request->all(), [
                 'order_id' => 'required|string|max:255',
                 'amount' => 'required|numeric|min:0.01|max:999999.99',
@@ -74,6 +74,10 @@ class DeunaPaymentController extends Controller
                 'qr_type' => 'sometimes|string|in:static,dynamic',
                 'format' => 'sometimes|string|in:0,1,2,3,4',
                 'metadata' => 'sometimes|array',
+                // ✅ CAMPOS PARA CHECKOUTDATA TEMPORAL
+                'session_id' => 'sometimes|string|max:100',
+                'validated_at' => 'sometimes|string',
+                'checkout_data' => 'sometimes|array', // Objeto completo de checkout
             ]);
 
             if ($validator->fails()) {
@@ -86,11 +90,29 @@ class DeunaPaymentController extends Controller
 
             $paymentData = $validator->validated();
 
+            // ✅ DETECTAR SI ES CHECKOUTDATA TEMPORAL
+            $hasSessionId = isset($paymentData['session_id']) && ! empty($paymentData['session_id']);
+            $hasValidatedAt = isset($paymentData['validated_at']) && ! empty($paymentData['validated_at']);
+            $hasCheckoutData = isset($paymentData['checkout_data']) && ! empty($paymentData['checkout_data']);
+            $isTemporalCheckout = $hasSessionId && $hasValidatedAt;
+
+            if ($isTemporalCheckout) {
+                Log::info('🎯 DeUna: Procesando CheckoutData temporal validado', [
+                    'session_id' => $paymentData['session_id'],
+                    'validated_at' => $paymentData['validated_at'],
+                    'has_checkout_data' => $hasCheckoutData,
+                    'order_id' => $paymentData['order_id'],
+                    'amount' => $paymentData['amount'],
+                ]);
+            }
+
             Log::info('🧮 Creating DeUna payment via API using PricingCalculatorService', [
                 'order_id' => $paymentData['order_id'],
                 'frontend_amount' => $paymentData['amount'],
                 'customer_email' => $paymentData['customer']['email'] ?? 'not_provided',
                 'items_count' => count($paymentData['items'] ?? []),
+                'is_temporal_checkout' => $isTemporalCheckout,
+                'session_id' => $paymentData['session_id'] ?? 'none',
             ]);
 
             // 🔍 DEBUG: Log the exact items received from frontend

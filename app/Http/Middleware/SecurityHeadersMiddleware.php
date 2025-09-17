@@ -21,11 +21,12 @@ class SecurityHeadersMiddleware
             return $response;
         }
 
-        // TEMPORALMENTE DESACTIVADO EN DESARROLLO PARA DATAFAST
-        // El widget de Datafast tiene su propio CSP embebido que entra en conflicto
-        if (config('app.env') === 'local') {
-            return $response;
-        }
+        // OPTIMIZADO: Habilitado con configuración flexible para Datafast
+        $isDatafastRoute = str_contains($request->getUri(), '/datafast') ||
+                          str_contains($request->getUri(), '/payment');
+
+        // Solo desactivar CSP estricto en rutas de Datafast en desarrollo
+        $skipCSP = config('app.env') === 'local' && $isDatafastRoute;
 
         // Get allowed origins from CORS config
         $frontendUrl = config('cors.allowed_origins')[0] ?? 'https://comersia.app';
@@ -51,11 +52,20 @@ class SecurityHeadersMiddleware
             'upgrade-insecure-requests',
         ];
 
-        $response->headers->set('Content-Security-Policy', implode('; ', $csp));
+        // Aplicar CSP solo si no es una ruta de Datafast en desarrollo
+        if (!$skipCSP) {
+            $response->headers->set('Content-Security-Policy', implode('; ', $csp));
+        }
 
-        // Additional security headers
+        // Additional security headers (siempre aplicados excepto en Datafast)
+        if (!$isDatafastRoute) {
+            $response->headers->set('X-Frame-Options', 'DENY');
+        } else {
+            // Datafast necesita SAMEORIGIN para funcionar
+            $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        }
+
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('X-XSS-Protection', '1; mode=block');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');

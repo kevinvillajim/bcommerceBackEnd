@@ -136,7 +136,7 @@ class DatabaseSeeder extends Seeder
                         'description' => 'This is an official business seller account.',
                         'status' => 'active',
                         'verification_level' => fake()->randomElement(['verified', 'premium']),
-                        'commission_rate' => fake()->randomFloat(2, 5, 15),
+                        // 'commission_rate' => fake()->randomFloat(2, 5, 15), // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin (se obtiene dinámicamente)
                         'is_featured' => fake()->boolean(40), // 40% chance of being featured
                     ]
                 );

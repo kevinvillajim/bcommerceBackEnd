@@ -346,7 +346,7 @@ class SriApiService
         Log::info('Sistema inteligente de retry para factura SRI', [
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'has_sri_access_key' => !empty($invoice->sri_access_key),
+            'has_sri_access_key' => ! empty($invoice->sri_access_key),
             'current_status' => $invoice->status,
             'current_retry_count' => $invoice->retry_count,
         ]);
@@ -386,7 +386,7 @@ class SriApiService
         } catch (Exception $e) {
             Log::error('Error en sistema inteligente de retry', [
                 'invoice_id' => $invoice->id,
-                'has_sri_access_key' => !empty($invoice->sri_access_key),
+                'has_sri_access_key' => ! empty($invoice->sri_access_key),
                 'retry_count' => $invoice->retry_count,
                 'error' => $e->getMessage(),
             ]);

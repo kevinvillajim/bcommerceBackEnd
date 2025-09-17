@@ -23,18 +23,18 @@ use App\Events\ShippingStatusUpdated;
 use App\Listeners\GenerateInvoiceFromOrderListener;
 use App\Listeners\GeneratePdfFromInvoiceListener;
 use App\Listeners\NotifyAdminOfFeedback;
-use App\Listeners\SendInvoiceEmailListener;
 use App\Listeners\NotifyAdminSellerRankUp;
 use App\Listeners\NotifySellerOfAccountBlock;
-// Seller notification events
 use App\Listeners\NotifySellerOfFeedbackResponse;
+// Seller notification events
 use App\Listeners\NotifySellerOfLowStock;
 use App\Listeners\NotifySellerOfNewOrder;
 use App\Listeners\NotifySellerOfShippingDelay;
 use App\Listeners\NotifySellerOfStrike;
 use App\Listeners\NotifySellerRankChanged;
-// Seller notification listeners
 use App\Listeners\SendFeedbackResponseNotification;
+// Seller notification listeners
+use App\Listeners\SendInvoiceEmailListener;
 use App\Listeners\SendInvoiceToSriListener;
 use App\Listeners\SendNewMessageNotification;
 use App\Listeners\SendOrderStatusNotification;
@@ -42,6 +42,7 @@ use App\Listeners\SendProductUpdateNotifications;
 use App\Listeners\SendRatingReceivedNotification;
 use App\Listeners\SendRatingRequestNotification;
 use App\Listeners\SendShippingStatusNotification;
+use App\Listeners\RecordSaleTransactionListener;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Event;
 
@@ -58,6 +59,7 @@ class EventServiceProvider extends ServiceProvider
             NotifySellerOfNewOrder::class,
             \App\Listeners\InvalidateCartCacheListener::class, // 🛒 Invalidar cache del carrito en header
             GenerateInvoiceFromOrderListener::class, // ✅ Generar factura automáticamente
+            RecordSaleTransactionListener::class, // 🧮 Registrar transacción contable automáticamente
         ],
 
         // ✅ NUEVO: Evento para facturas generadas

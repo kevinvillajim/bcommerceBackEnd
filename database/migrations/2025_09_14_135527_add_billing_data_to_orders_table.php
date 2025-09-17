@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -23,7 +23,7 @@ return new class extends Migration
             'type' => 'json',
             'nullable' => true,
             'position' => 'after shipping_data',
-            'purpose' => 'SRI billing data separation'
+            'purpose' => 'SRI billing data separation',
         ]);
     }
 
@@ -38,7 +38,7 @@ return new class extends Migration
 
         Log::info('🔄 MIGRATION ROLLBACK: billing_data field dropped', [
             'table' => 'orders',
-            'field' => 'billing_data'
+            'field' => 'billing_data',
         ]);
     }
 };

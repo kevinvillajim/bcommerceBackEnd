@@ -13,7 +13,6 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 class JwtService implements JwtServiceInterface
 {
-
     /**
      * Get session timeout from centralized configuration (simple approach)
      */

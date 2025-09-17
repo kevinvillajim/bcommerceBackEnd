@@ -57,7 +57,7 @@ class EloquentSellerRepository implements SellerRepositoryInterface
             'description' => $sellerEntity->getDescription(),
             'status' => $sellerEntity->getStatus(),
             'verification_level' => $sellerEntity->getVerificationLevel(),
-            'commission_rate' => $sellerEntity->getCommissionRate(),
+            // 'commission_rate' => $sellerEntity->getCommissionRate(), // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
             'total_sales' => $sellerEntity->getTotalSales(),
             'is_featured' => $sellerEntity->isFeatured(),
         ]);
@@ -77,7 +77,7 @@ class EloquentSellerRepository implements SellerRepositoryInterface
             'description' => $sellerEntity->getDescription(),
             'status' => $sellerEntity->getStatus(),
             'verification_level' => $sellerEntity->getVerificationLevel(),
-            'commission_rate' => $sellerEntity->getCommissionRate(),
+            // 'commission_rate' => $sellerEntity->getCommissionRate(), // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
             'total_sales' => $sellerEntity->getTotalSales(),
             'is_featured' => $sellerEntity->isFeatured(),
         ]);
@@ -205,7 +205,8 @@ class EloquentSellerRepository implements SellerRepositoryInterface
             $seller->description,
             $seller->status,
             $seller->verification_level,
-            $seller->commission_rate,
+            // $seller->commission_rate, // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
+            app(\App\Infrastructure\Services\ConfigurationService::class)->getConfig('platform.commission_rate', 10.0), // Usar configuración dinámica del admin
             $seller->total_sales,
             $seller->is_featured,
             $seller->id,

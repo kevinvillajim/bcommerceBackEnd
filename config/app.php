@@ -126,4 +126,6 @@ return [
     ],
 
     'low_stock_threshold' => env('LOW_STOCK_THRESHOLD', 5),
+
+    'checkout_data_ttl' => env('CHECKOUT_DATA_TTL', 1800), // 30 minutos por defecto
 ];

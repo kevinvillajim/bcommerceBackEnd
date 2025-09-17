@@ -126,5 +126,84 @@ class CriticalConfigurationSeeder extends Seeder
         }
 
         $this->command->info('✅ Configuraciones críticas insertadas/actualizadas: '.count($configurations));
+
+        // Verificar configuraciones críticas adicionales para checkout
+        $this->ensureCheckoutCriticalConfigurations();
+    }
+
+    /**
+     * Garantiza que las configuraciones críticas para checkout estén disponibles
+     * Si no existen, las crea con valores por defecto seguros
+     */
+    private function ensureCheckoutCriticalConfigurations(): void
+    {
+        $criticalConfigs = [
+            'shipping.enabled' => 'true',
+            'shipping.free_threshold' => '50.00',
+            'shipping.default_cost' => '5.00',
+            'payment.taxRate' => '15.0',
+            'security.price_verification_enabled' => 'true',
+            'security.total_validation_tolerance' => '0.001',
+        ];
+
+        $created = 0;
+        foreach ($criticalConfigs as $key => $defaultValue) {
+            $exists = DB::table('configurations')
+                ->where('key', $key)
+                ->whereNotNull('value')
+                ->exists();
+
+            if (!$exists) {
+                DB::table('configurations')->updateOrInsert(
+                    ['key' => $key],
+                    [
+                        'value' => $defaultValue,
+                        'description' => 'Critical configuration for checkout - auto-created',
+                        'group' => 'system',
+                        'type' => is_numeric($defaultValue) ? 'number' : (in_array($defaultValue, ['true', 'false']) ? 'boolean' : 'text'),
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+                $created++;
+            }
+        }
+
+        if ($created > 0) {
+            $this->command->info("✅ Configuraciones críticas adicionales creadas: {$created}");
+        }
+    }
+
+    /**
+     * Verifica si todas las configuraciones críticas para checkout están disponibles
+     * Lanza excepción si alguna falta
+     */
+    public static function validateCriticalConfigurationsExist(): void
+    {
+        $criticalKeys = [
+            'shipping.enabled',
+            'shipping.free_threshold',
+            'shipping.default_cost',
+            'payment.taxRate'
+        ];
+
+        $missing = [];
+        foreach ($criticalKeys as $key) {
+            $exists = DB::table('configurations')
+                ->where('key', $key)
+                ->whereNotNull('value')
+                ->exists();
+
+            if (!$exists) {
+                $missing[] = $key;
+            }
+        }
+
+        if (!empty($missing)) {
+            throw new \Exception(
+                'Critical configurations missing: ' . implode(', ', $missing) .
+                '. Run CriticalConfigurationSeeder to fix this.'
+            );
+        }
     }
 }

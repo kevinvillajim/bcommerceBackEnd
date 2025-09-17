@@ -31,7 +31,7 @@ class TestCheckoutController extends Command
             // Test 1: Verificar que CheckoutRequest valida billingAddress
             $this->info('📋 Test 1: Verificando validación de CheckoutRequest...');
 
-            $checkoutRequest = new \App\Http\Requests\CheckoutRequest();
+            $checkoutRequest = new \App\Http\Requests\CheckoutRequest;
             $rules = $checkoutRequest->rules();
 
             $hasBillingRules = isset($rules['billingAddress']) ||
@@ -42,8 +42,8 @@ class TestCheckoutController extends Command
                                array_key_exists('shippingAddress.name', $rules) ||
                                array_key_exists('shippingAddress.identification', $rules);
 
-            $this->info('✅ CheckoutRequest valida shippingAddress: ' . ($hasShippingRules ? 'SI' : 'NO'));
-            $this->info('✅ CheckoutRequest valida billingAddress: ' . ($hasBillingRules ? 'SI' : 'NO'));
+            $this->info('✅ CheckoutRequest valida shippingAddress: '.($hasShippingRules ? 'SI' : 'NO'));
+            $this->info('✅ CheckoutRequest valida billingAddress: '.($hasBillingRules ? 'SI' : 'NO'));
 
             // Test 2: Verificar estructura de datos requerida
             $this->info('📋 Test 2: Verificando campos requeridos...');
@@ -55,12 +55,12 @@ class TestCheckoutController extends Command
                 'billingAddress.city',
                 'billingAddress.state',
                 'billingAddress.country',
-                'billingAddress.phone'
+                'billingAddress.phone',
             ];
 
             foreach ($requiredFields as $field) {
                 $hasField = array_key_exists($field, $rules);
-                $this->info('✅ Campo ' . $field . ': ' . ($hasField ? 'VALIDADO' : 'NO ENCONTRADO'));
+                $this->info('✅ Campo '.$field.': '.($hasField ? 'VALIDADO' : 'NO ENCONTRADO'));
             }
 
             // Test 3: Simular que los datos se reciben correctamente (sin enviar al UseCase)
@@ -80,7 +80,8 @@ class TestCheckoutController extends Command
             $this->info('🏁 ETAPA 2 COMPLETADA - CheckoutController actualizado correctamente');
 
         } catch (\Exception $e) {
-            $this->error('❌ Error: ' . $e->getMessage());
+            $this->error('❌ Error: '.$e->getMessage());
+
             return 1;
         }
 

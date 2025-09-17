@@ -70,20 +70,12 @@ class ProcessCheckoutUseCase
      */
     public function execute(int $userId, array $paymentData, array $shippingData, array $billingData, array $items = [], ?int $sellerId = null, ?string $discountCode = null, ?array $calculatedTotals = null): array
     {
-        // 🔍 LOGGING TEMPORAL: Capturar datos de entrada
-        Log::info('🔍 ProcessCheckoutUseCase.execute() - DATOS DE ENTRADA', [
-            'userId' => $userId,
-            'shippingData_full' => $shippingData,
-            'shippingData_has_identification' => isset($shippingData['identification']),
-            'identification_value' => $shippingData['identification'] ?? 'NO_SET',
-            'shippingData_keys' => array_keys($shippingData),
-            'paymentData_keys' => array_keys($paymentData),
-            // 🔍 NUEVOS LOGS BILLING DATA
-            'billingData_full' => $billingData,
-            'billingData_has_identification' => isset($billingData['identification']),
-            'billing_identification_value' => $billingData['identification'] ?? 'NO_SET',
-            'billingData_keys' => array_keys($billingData),
-            'billing_equals_shipping' => $billingData === $shippingData,
+        // OPTIMIZADO: Solo log esencial de inicio
+        Log::info('🛒 ProcessCheckoutUseCase iniciado', [
+            'user_id' => $userId,
+            'items_count' => count($items),
+            'payment_method' => $paymentData['method'] ?? 'unknown',
+            'has_discount' => !empty($discountCode)
         ]);
 
         return DB::transaction(function () use ($userId, $paymentData, $shippingData, $billingData, $items, $sellerId, $discountCode, $calculatedTotals) {
@@ -101,12 +93,7 @@ class ProcessCheckoutUseCase
                     Log::info('🔒 CRITICAL: Skipping isolation level change (development/testing)');
                 }
 
-                Log::info('🔒 CRITICAL: Transaction started with SERIALIZABLE isolation level', [
-                    'user_id' => $userId,
-                    'items_count' => count($items),
-                    'transaction_id' => DB::transactionLevel(),
-                    'timestamp' => microtime(true),
-                ]);
+                // OPTIMIZADO: Sin logging excesivo de transacción
                 // 🔧 NUEVO: Extraer seller_id del primer producto si no se proporciona
                 if ($sellerId === null && ! empty($items)) {
                     $firstProductId = $items[0]['product_id'] ?? null;
@@ -114,21 +101,12 @@ class ProcessCheckoutUseCase
                         $firstProduct = $this->productRepository->findById($firstProductId);
                         if ($firstProduct) {
                             $sellerId = $firstProduct->getSellerId();
-                            Log::info('🔧 Seller ID extraído del primer producto', [
-                                'product_id' => $firstProductId,
-                                'seller_id' => $sellerId,
-                            ]);
+                            // OPTIMIZADO: Sin logging de seller ID extracción
                         }
                     }
                 }
 
-                Log::info('🧮 ProcessCheckoutUseCase INICIADO usando PricingCalculatorService', [
-                    'user_id' => $userId,
-                    'seller_id' => $sellerId,
-                    'items_count' => count($items),
-                    'has_frontend_totals' => $calculatedTotals !== null,
-                    'discount_code' => $discountCode,
-                ]);
+                // OPTIMIZADO: Sin logging duplicado de inicio
 
                 // 🧮 NUEVO: Usar PricingCalculatorService centralizado para todos los cálculos
                 if (empty($items)) {
@@ -160,11 +138,7 @@ class ProcessCheckoutUseCase
                     ];
                 }
 
-                Log::info('🧮 Calculando totales con PricingCalculatorService centralizado', [
-                    'items_count' => count($pricingItems),
-                    'user_id' => $userId,
-                    'discount_code' => $discountCode,
-                ]);
+                // OPTIMIZADO: Sin logging de cálculo de totales
 
                 // Usar servicio centralizado para calcular totales
                 $pricingResult = $this->pricingService->calculateCartTotals(
@@ -193,45 +167,43 @@ class ProcessCheckoutUseCase
                 // Usar items procesados del servicio centralizado
                 $processedItems = $pricingResult['processed_items'];
 
-                Log::info('✅ Totales calculados con PricingCalculatorService centralizado', [
-                    'subtotal_original' => $totals['subtotal_original'],
-                    'final_total' => $totals['final_total'],
-                    'total_discounts' => $totals['total_discounts'],
-                    'iva_amount' => $totals['iva_amount'],
-                    'shipping_cost' => $totals['shipping_cost'],
-                ]);
+                // OPTIMIZADO: Sin logging detallado de totales
 
                 // El descuento de código ya fue procesado por PricingCalculatorService
                 $discountCodeInfo = $pricingResult['coupon_info'] ?? null;
 
-                Log::info('💰 Totales calculados con descuentos por volumen', [
-                    'subtotal_original' => $totals['subtotal_original'],
-                    'subtotal_with_discounts' => $totals['subtotal_with_discounts'],
-                    'seller_discounts' => $totals['seller_discounts'],
-                    'volume_discounts' => $totals['volume_discounts'],
-                    'total_discounts' => $totals['total_discounts'],
-                    'iva' => $totals['iva_amount'],
-                    'shipping' => $totals['shipping_cost'],
-                    'final_total' => $totals['final_total'],
-                ]);
+                // OPTIMIZADO: Sin logging duplicado de totales
 
-                // 4. 🔒 SECURITY: Verificar integridad de precios (anti-tampering) - INCLUYE TODOS LOS DESCUENTOS
-                if (! empty($paymentData['skip_price_verification'])) {
-                    Log::info('🔓 SECURITY: Saltando verificación de precios (método de pago confiable)', [
-                        'payment_method' => $paymentData['method'] ?? 'unknown',
+                // 4. 🔒 SECURITY: Verificación OBLIGATORIA de precios - NO FALLBACKS
+                if (! $this->priceVerificationService->verifyItemPrices($items, $userId, $discountCode)) {
+                    Log::error('❌ SECURITY: Price tampering detected', [
                         'user_id' => $userId,
+                        'payment_method' => $paymentData['method'] ?? 'unknown',
+                        'items' => array_map(fn($item) => [
+                            'id' => $item['product_id'],
+                            'price' => $item['price'],
+                            'quantity' => $item['quantity']
+                        ], $items)
                     ]);
-                } else {
-                    if (! $this->priceVerificationService->verifyItemPrices($items, $userId, $discountCode)) {
-                        throw new \Exception('Security: Price tampering detected. Transaction blocked.');
-                    }
+                    throw new \Exception('Security: Price tampering detected. Transaction blocked.');
                 }
 
-                // Verificar totales calculados si se proporcionan
-                if ($calculatedTotals) {
-                    if (! $this->priceVerificationService->verifyCalculatedTotals($processedItems, $calculatedTotals, $userId, $discountCode)) {
-                        throw new \Exception('Security: Total tampering detected. Transaction blocked.');
-                    }
+                // Verificar totales calculados - SIEMPRE OBLIGATORIO
+                if (!$calculatedTotals) {
+                    Log::error('❌ SECURITY: No calculated totals provided', [
+                        'user_id' => $userId,
+                        'payment_method' => $paymentData['method'] ?? 'unknown'
+                    ]);
+                    throw new \Exception('Security: Calculated totals are required for verification.');
+                }
+
+                if (! $this->priceVerificationService->verifyCalculatedTotals($processedItems, $calculatedTotals, $userId, $discountCode)) {
+                    Log::error('❌ SECURITY: Total tampering detected', [
+                        'user_id' => $userId,
+                        'expected_totals' => $totals,
+                        'provided_totals' => $calculatedTotals
+                    ]);
+                    throw new \Exception('Security: Total tampering detected. Transaction blocked.');
                 }
 
                 // 5. Validar stock de productos
@@ -271,26 +243,13 @@ class ProcessCheckoutUseCase
                     ],
                 ];
 
-                // 🔍 LOGGING TEMPORAL: Verificar shipping_data en orderData
-                Log::info('🔍 ProcessCheckoutUseCase - SHIPPING_DATA EN ORDER_DATA', [
-                    'orderData_shipping_data' => $shippingData,
-                    'shipping_identification' => $shippingData['identification'] ?? 'NO_SET',
-                    'shipping_data_count' => count($shippingData),
-                    'is_array' => is_array($shippingData),
-                ]);
-
-                Log::info('🏗️ Creando orden principal con descuentos por volumen');
+                // OPTIMIZADO: Solo log crítico de creación de orden
+                Log::info('🏗️ Creando orden principal', ['total' => $totals['final_total']]);
                 $mainOrder = $this->createOrderUseCase->execute($orderData);
                 $orderId = $mainOrder->getId();
 
-                // 💾 LOG: Confirmar datos almacenados correctamente
-                Log::info('💾 ORDER: Datos almacenados', [
-                    'order_id' => $orderId,
-                    'shipping_data_keys' => array_keys($shippingData),
-                    'billing_data_keys' => array_keys($billingData),
-                    'has_billing_data' => !empty($billingData),
-                    'billing_equals_shipping' => $billingData === $shippingData
-                ]);
+                // OPTIMIZADO: Solo log esencial de orden creada
+                Log::info('✅ Orden creada', ['order_id' => $orderId]);
 
                 if (! $orderId || ! is_numeric($orderId)) {
                     throw new \Exception('Error al crear la orden: ID de orden inválido');
@@ -302,25 +261,13 @@ class ProcessCheckoutUseCase
                 if ($discountCodeInfo) {
                     $markAsUsedResult = $this->applyCartDiscountCodeUseCase->markAsUsed($discountCodeInfo['code'], $userId);
                     if ($markAsUsedResult['success']) {
-                        Log::info('✅ Código de descuento marcado como usado', [
-                            'code' => $discountCodeInfo['code'],
-                            'order_id' => $orderId,
-                        ]);
+                        // OPTIMIZADO: Sin logging de descuento marcado
                     }
                 }
 
                 // 7. Procesar pago con total correcto
-                Log::info('💳 Procesando pago', [
-                    'method' => $paymentData['method'],
-                    'total' => $totals['final_total'],
-                ]);
 
                 // 🔧 CORREGIDO: Mapear datos de shipping a customer para Datafast
-                Log::info('🔍 DEBUGING shipping data antes del mapeo', [
-                    'shipping_data' => $shippingData,
-                    'payment_method' => $paymentData['method'] ?? 'unknown',
-                    'payment_data_keys' => array_keys($paymentData),
-                ]);
 
                 // ✅ SEGURIDAD: Validación estricta de campos obligatorios - NO USAR FALLBACKS
                 $requiredFields = ['name', 'identification', 'phone', 'street', 'city', 'state', 'country'];
@@ -351,10 +298,7 @@ class ProcessCheckoutUseCase
                 $paymentDataWithCustomer['shipping'] = $shippingData;
                 $paymentDataWithCustomer['billing'] = $shippingData; // Usar mismos datos para billing
 
-                Log::info('🔍 DEBUGING customer data después del mapeo', [
-                    'customer_data' => $paymentDataWithCustomer['customer'],
-                    'payment_method' => $paymentDataWithCustomer['method'] ?? 'unknown',
-                ]);
+                // OPTIMIZADO: Sin logging de customer data debug
 
                 $paymentResult = $this->paymentGateway->processPayment($paymentDataWithCustomer, $totals['final_total']);
 
@@ -388,15 +332,7 @@ class ProcessCheckoutUseCase
                     // Marcar que el evento ya se disparó para este transaction_id
                     Cache::put($eventCacheKey, true, 300); // 5 minutos de caché
 
-                    Log::info('🚀 ProcessCheckoutUseCase: Disparando evento OrderCreated CON payment_status', [
-                        'order_id' => $orderId,
-                        'user_id' => $userId,
-                        'seller_id' => $sellerId,
-                        'total' => $totals['final_total'],
-                        'payment_status' => 'completed',
-                        'transaction_id' => $transactionId,
-                        'cache_key' => $eventCacheKey,
-                    ]);
+                    // OPTIMIZADO: Solo log esencial de evento\n                    Log::info('🚀 Disparando evento OrderCreated', ['order_id' => $orderId]);
 
                     event(new OrderCreated(
                         $orderId,
@@ -411,10 +347,7 @@ class ProcessCheckoutUseCase
                         ]
                     ));
 
-                    Log::info('✅ Evento OrderCreated disparado DESPUÉS de updatePaymentInfo', [
-                        'transaction_id' => $transactionId,
-                        'cache_key' => $eventCacheKey,
-                    ]);
+                    // OPTIMIZADO: Sin logging post-evento
                 }
 
                 // 9. Crear seller orders
@@ -433,11 +366,8 @@ class ProcessCheckoutUseCase
                 // 12. Obtener orden completada
                 $completedOrder = $this->orderRepository->findById($orderId);
 
-                Log::info('🎉 Checkout completado con descuentos por volumen', [
-                    'order_id' => $orderId,
-                    'final_total' => $totals['final_total'],
-                    'total_savings' => $totals['total_discounts'],
-                ]);
+                // OPTIMIZADO: Solo log esencial de finalización
+                Log::info('🎉 Checkout completado', ['order_id' => $orderId, 'total' => $totals['final_total']]);
 
                 // ✅ CORREGIDO: Estructura de respuesta que coincide con CheckoutController
                 return [
@@ -697,10 +627,21 @@ class ProcessCheckoutUseCase
         // ✅ CRÍTICO: NO calcular IVA aquí - se calculará al final después de TODOS los descuentos
         // El IVA debe calcularse solo DESPUÉS de aplicar código de descuento de feedback
 
-        // Calcular envío usando configuración de base de datos (sin IVA por ahora)
-        $shippingEnabled = $this->configService->getConfig('shipping.enabled', true);
-        $freeShippingThreshold = $this->configService->getConfig('shipping.free_threshold', 50.00);
-        $defaultShippingCost = $this->configService->getConfig('shipping.default_cost', 5.00);
+        // Calcular envío - CONFIGURACIÓN OBLIGATORIA
+        $shippingEnabled = $this->configService->getConfig('shipping.enabled');
+        if ($shippingEnabled === null) {
+            throw new \Exception('Critical configuration missing: shipping.enabled');
+        }
+
+        $freeShippingThreshold = $this->configService->getConfig('shipping.free_threshold');
+        if ($freeShippingThreshold === null) {
+            throw new \Exception('Critical configuration missing: shipping.free_threshold');
+        }
+
+        $defaultShippingCost = $this->configService->getConfig('shipping.default_cost');
+        if ($defaultShippingCost === null) {
+            throw new \Exception('Critical configuration missing: shipping.default_cost');
+        }
 
         $shippingCost = 0;
         if ($shippingEnabled) {
@@ -708,9 +649,14 @@ class ProcessCheckoutUseCase
         }
         $freeShipping = $shippingCost === 0;
 
-        // 🔧 CORREGIDO: Calcular IVA dinámico y total final (estructura estandarizada)
+        // 🔧 CORREGIDO: Calcular IVA dinámico - CONFIGURACIÓN OBLIGATORIA
         $subtotalFinal = $subtotalWithDiscounts + $shippingCost; // Base gravable
-        $taxRatePercentage = $this->configService->getConfig('payment.taxRate', 15.0);
+
+        $taxRatePercentage = $this->configService->getConfig('payment.taxRate');
+        if ($taxRatePercentage === null) {
+            throw new \Exception('Critical configuration missing: payment.taxRate - Tax rate is required for checkout');
+        }
+
         $taxRate = $taxRatePercentage / 100; // Convertir % a decimal
         $ivaAmount = $subtotalFinal * $taxRate; // IVA dinámico sobre base gravable
         $finalTotal = $subtotalFinal + $ivaAmount; // Total final

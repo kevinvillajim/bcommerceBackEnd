@@ -12,11 +12,11 @@ class DatafastPayment extends Model
         'user_id',
         'order_id',
 
-        // Identificadores únicos de Datafast
-        'transaction_id',
-        'checkout_id',
-        'datafast_payment_id',
-        'resource_path',
+        // ✅ IDENTIFICADORES CLARIFICADOS:
+        'transaction_id',        // ID único del sistema: ORDER_{timestamp}_{userId}_{uniqid} - Para rastreo interno
+        'checkout_id',           // ID del checkout de Datafast - Retornado por API de Datafast al crear checkout
+        'datafast_payment_id',   // ID específico del pago de Datafast - Retornado tras procesar pago exitoso
+        'resource_path',         // Path de recurso de Datafast - Para verificación de estado del pago
 
         // Información financiera
         'amount',
@@ -172,5 +172,79 @@ class DatafastPayment extends Model
             'status' => 'processing',
             'payment_attempted_at' => now(),
         ]);
+    }
+
+    /**
+     * ✅ NUEVO: Obtener estado como payment_status para respuestas JSON consistentes
+     */
+    public function getPaymentStatusAttribute()
+    {
+        return $this->status;
+    }
+
+    /**
+     * ✅ NUEVO: Estados válidos del sistema
+     */
+    public static function getValidStatuses(): array
+    {
+        return ['pending', 'processing', 'completed', 'failed', 'error'];
+    }
+
+    /**
+     * ✅ NUEVO: Verificar si el pago está en estado final
+     */
+    public function isFinalized(): bool
+    {
+        return in_array($this->status, ['completed', 'failed', 'error']);
+    }
+
+    // ✅ MÉTODOS CLARIFICADORES PARA IDs
+
+    /**
+     * Obtener ID único del sistema (para rastreo interno)
+     */
+    public function getSystemTransactionId(): string
+    {
+        return $this->transaction_id;
+    }
+
+    /**
+     * Obtener ID del checkout de Datafast (para widget y API)
+     */
+    public function getDatafastCheckoutId(): ?string
+    {
+        return $this->checkout_id;
+    }
+
+    /**
+     * Obtener ID específico del pago de Datafast (tras pago exitoso)
+     */
+    public function getDatafastPaymentId(): ?string
+    {
+        return $this->datafast_payment_id;
+    }
+
+    /**
+     * Obtener resource path para verificación (usado en API de verificación)
+     */
+    public function getResourcePath(): ?string
+    {
+        return $this->resource_path;
+    }
+
+    /**
+     * ✅ NUEVO: Verificar si tiene todos los IDs necesarios para verificación
+     */
+    public function hasVerificationIds(): bool
+    {
+        return !empty($this->transaction_id) && !empty($this->resource_path);
+    }
+
+    /**
+     * ✅ NUEVO: Verificar si el checkout fue creado exitosamente
+     */
+    public function hasDatafastCheckout(): bool
+    {
+        return !empty($this->checkout_id);
     }
 }

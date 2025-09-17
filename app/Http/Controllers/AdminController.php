@@ -244,7 +244,7 @@ class AdminController extends Controller
             $seller->description = $request->input('description');
             $seller->status = $request->input('status');
             $seller->verification_level = 'none'; // Default value - will be replaced by is_featured logic
-            $seller->commission_rate = $request->input('commission_rate', 10.00);
+            // $seller->commission_rate = $request->input('commission_rate', 10.00); // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
             $seller->total_sales = 0;
             $seller->is_featured = $request->input('is_featured', false);
             $seller->save();
@@ -333,9 +333,10 @@ class AdminController extends Controller
 
             // verification_level is now handled by is_featured logic
 
-            if ($request->has('commission_rate')) {
-                $seller->commission_rate = $request->input('commission_rate');
-            }
+            // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
+            // if ($request->has('commission_rate')) {
+            //     $seller->commission_rate = $request->input('commission_rate');
+            // }
 
             if ($request->has('is_featured')) {
                 $seller->is_featured = $request->input('is_featured');

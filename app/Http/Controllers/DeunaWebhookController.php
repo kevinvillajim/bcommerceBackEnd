@@ -2,7 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\UseCases\Payment\HandleDeunaWebhookUseCase;
+use App\Factories\PaymentValidatorFactory;
+use App\Services\PaymentProcessingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -10,24 +11,24 @@ use Illuminate\Support\Facades\Log;
 class DeunaWebhookController extends Controller
 {
     public function __construct(
-        private HandleDeunaWebhookUseCase $handleWebhookUseCase
+        private PaymentProcessingService $paymentProcessingService,
+        private PaymentValidatorFactory $validatorFactory
     ) {}
 
     /**
-     * Handle DeUna webhook notifications
+     * Handle DeUna webhook notifications usando arquitectura centralizada
      */
     public function handlePaymentStatus(Request $request): JsonResponse
     {
         try {
-            // Log the incoming webhook
-            Log::info('DeUna webhook received', [
+            Log::info('🔔 DeUna webhook recibido con arquitectura centralizada', [
                 'headers' => $request->headers->all(),
                 'body' => $request->all(),
                 'ip' => $request->ip(),
                 'user_agent' => $request->userAgent(),
             ]);
 
-            // Get the raw body for signature verification
+            // Obtener payload JSON
             $rawBody = $request->getContent();
             $webhookData = json_decode($rawBody, true);
 
@@ -43,38 +44,99 @@ class DeunaWebhookController extends Controller
                 ], 400);
             }
 
-            // Get signature from headers
-            $signature = $request->header('X-DeUna-Signature')
-                ?? $request->header('x-deuna-signature')
-                ?? $request->header('signature')
-                ?? '';
+            // Auto-detectar tipo de validación
+            $validationType = $this->validatorFactory->detectDeunaValidationType($webhookData);
 
-            Log::info('Processing webhook data', [
-                'has_signature' => ! empty($signature),
+            Log::info('🏭 Auto-detectando validación Deuna', [
+                'validation_type' => $validationType,
                 'event' => $webhookData['event'] ?? $webhookData['eventType'] ?? 'unknown',
-                'payment_id' => $webhookData['payment_id'] ?? $webhookData['idTransacionReference'] ?? 'unknown',
+                'payment_id' => $webhookData['payment_id'] ?? $webhookData['idTransaction'] ?? 'unknown',
             ]);
 
-            // Process the webhook
-            $result = $this->handleWebhookUseCase->execute($webhookData, $signature);
+            // Crear validador específico
+            $validator = $this->validatorFactory->getValidator('deuna', $validationType);
 
-            Log::info('Webhook processed successfully', [
-                'payment_id' => $result['payment_id'] ?? 'unknown',
-                'event' => $result['event'] ?? 'unknown',
-                'status' => $result['status'] ?? 'unknown',
+            // Validar webhook
+            $validationResult = $validator->validatePayment($webhookData);
+
+            if ($validationResult->isSuccessful()) {
+                Log::info('✅ Webhook Deuna validado exitosamente', [
+                    'transaction_id' => $validationResult->metadata['payment_id'] ?? 'N/A',
+                    'status' => $validationResult->metadata['status'] ?? 'N/A',
+                ]);
+
+                // Buscar usuario asociado
+                $transactionId = $validationResult->metadata['payment_id'] ?? null;
+                $userId = null;
+
+                if ($transactionId) {
+                    $deunaPayment = \App\Models\DeunaPayment::where('payment_id', $transactionId)->first();
+                    if ($deunaPayment) {
+                        $userId = $deunaPayment->user_id;
+                    }
+                }
+
+                if ($userId) {
+                    // Procesar webhook con usuario identificado
+                    // Generar sessionId artificial para webhooks Deuna basado en transaction_id
+                    $sessionId = 'deuna_webhook_' . $transactionId;
+
+                    $processingResult = $this->paymentProcessingService->processSuccessfulPayment(
+                        $validationResult,
+                        $sessionId
+                    );
+
+                    if ($processingResult['success']) {
+                        Log::info('✅ Webhook Deuna procesado exitosamente', [
+                            'order_id' => $processingResult['order']['id'],
+                            'transaction_id' => $transactionId,
+                        ]);
+
+                        return response()->json([
+                            'success' => true,
+                            'message' => 'Webhook processed successfully',
+                            'data' => [
+                                'payment_id' => $transactionId,
+                                'order_id' => $processingResult['order']['id'],
+                                'status' => 'processed',
+                                'processed_at' => now()->toISOString(),
+                            ],
+                        ]);
+                    }
+
+                    Log::warning('⚠️ Error procesando webhook Deuna', [
+                        'transaction_id' => $transactionId,
+                        'message' => $processingResult['message'] ?? 'Error desconocido',
+                    ]);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Processing failed',
+                        'error' => $processingResult['message'] ?? 'Unknown error',
+                    ], 200); // 200 para evitar reintentos de Deuna
+                }
+
+                Log::warning('⚠️ Webhook Deuna válido pero sin usuario asociado', [
+                    'transaction_id' => $transactionId,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Webhook received but no user found',
+                ], 200);
+            }
+
+            Log::warning('⚠️ Webhook Deuna inválido', [
+                'error_code' => $validationResult->errorCode,
+                'error_message' => $validationResult->errorMessage,
+                'payload' => $webhookData,
             ]);
 
-            // Return success response
             return response()->json([
-                'success' => true,
-                'message' => 'Webhook processed successfully',
-                'data' => [
-                    'payment_id' => $result['payment_id'],
-                    'event' => $result['event'],
-                    'status' => $result['status'],
-                    'processed_at' => now()->toISOString(),
-                ],
-            ]);
+                'success' => false,
+                'message' => 'Invalid webhook',
+                'error' => $validationResult->errorMessage,
+            ], 200); // 200 para evitar reintentos de Deuna
 
         } catch (\Exception $e) {
             Log::error('Error processing DeUna webhook', [
@@ -84,8 +146,7 @@ class DeunaWebhookController extends Controller
                 'headers' => $request->headers->all(),
             ]);
 
-            // Still return 200 to prevent DeUna from retrying
-            // But log the error for investigation
+            // Retornar 200 para evitar reintentos de DeUna
             return response()->json([
                 'success' => false,
                 'message' => 'Webhook processing failed',
@@ -147,12 +208,10 @@ class DeunaWebhookController extends Controller
     }
 
     /**
-     * Simulate successful Deuna payment webhook
-     * This endpoint simulates a real payment completion for testing
+     * Simulate successful Deuna payment webhook usando arquitectura centralizada
      */
     public function simulatePaymentSuccess(Request $request): JsonResponse
     {
-        // Only allow simulation in development/staging environments
         if (config('app.env') === 'production') {
             return response()->json([
                 'success' => false,
@@ -161,137 +220,87 @@ class DeunaWebhookController extends Controller
         }
 
         try {
-            // Get payment_id from request (should match an existing Deuna payment)
-            $paymentId = $request->input('payment_id');
-            if (! $paymentId) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'payment_id is required for simulation',
-                ], 400);
-            }
+            $validated = $request->validate([
+                'payment_id' => 'required|string',
+                'transaction_id' => 'required|string',
+                'simulate_deuna' => 'required|boolean',
+                'calculated_total' => 'sometimes|numeric|min:0',
+                'session_id' => 'sometimes|string|max:100', // Session ID para recuperar CheckoutData
+            ]);
 
-            Log::info('🧪 Simulating Deuna payment success', [
-                'payment_id' => $paymentId,
+            Log::info('🧪 Simulating Deuna payment success with centralized architecture', [
+                'payment_id' => $validated['payment_id'],
+                'transaction_id' => $validated['transaction_id'],
                 'simulated_by' => 'test_endpoint',
             ]);
 
-            // First, verify that the payment exists in database
-            try {
-                $existingPayment = \App\Models\DeunaPayment::where('payment_id', $paymentId)->first();
-                if (! $existingPayment) {
-                    Log::error('❌ Payment not found in database for simulation', [
-                        'payment_id' => $paymentId,
+            // Verificar que el pago existe
+            $existingPayment = \App\Models\DeunaPayment::where('payment_id', $validated['payment_id'])->first();
+            if (! $existingPayment) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment not found in database',
+                    'payment_id' => $validated['payment_id'],
+                ], 404);
+            }
+
+            // Crear validador de simulación
+            $validator = $this->validatorFactory->getValidator('deuna', 'simulation');
+
+            // Validar simulación
+            $validationResult = $validator->validatePayment($validated);
+
+            if ($validationResult->isSuccessful()) {
+                // Procesar simulación con servicio centralizado
+                // Usar session_id real del request si está disponible, sino generar artificial
+                $sessionId = $validated['session_id'] ?? 'deuna_simulation_' . $validated['payment_id'];
+
+                $processingResult = $this->paymentProcessingService->processSuccessfulPayment(
+                    $validationResult,
+                    $sessionId
+                );
+
+                if ($processingResult['success']) {
+                    Log::info('✅ Deuna simulation processed successfully', [
+                        'order_id' => $processingResult['order']['id'],
+                        'payment_id' => $validated['payment_id'],
                     ]);
 
                     return response()->json([
-                        'success' => false,
-                        'message' => 'Payment not found in database. Cannot simulate non-existent payment.',
-                        'payment_id' => $paymentId,
-                    ], 404);
+                        'success' => true,
+                        'message' => 'Payment simulation completed successfully',
+                        'data' => [
+                            'payment_id' => $validated['payment_id'],
+                            'order_id' => $processingResult['order']['id'],
+                            'order_number' => $processingResult['order']['number'],
+                            'total' => $processingResult['order']['total'],
+                            'simulated_status' => 'completed',
+                            'simulation_time' => now()->toISOString(),
+                        ],
+                        'note' => '🧪 This was a simulated payment for testing purposes',
+                    ]);
                 }
-
-                Log::info('✅ Found payment in database for simulation', [
-                    'payment_id' => $paymentId,
-                    'current_status' => $existingPayment->status,
-                    'order_id' => $existingPayment->order_id,
-                ]);
-
-            } catch (\Exception $e) {
-                Log::error('❌ Error checking payment existence', [
-                    'payment_id' => $paymentId,
-                    'error' => $e->getMessage(),
-                ]);
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Error checking payment existence: '.$e->getMessage(),
-                    'payment_id' => $paymentId,
-                ], 500);
-            }
-
-            // 🚨 CRITICAL FIX: Use REAL payment data to simulate exact DeUna webhook
-            $webhookData = [
-                'idTransaction' => $paymentId,
-                'status' => 'SUCCESS', // DeUna uses 'SUCCESS' for completed payments
-                'event' => 'payment.completed',
-                'amount' => $existingPayment->amount, // ✅ USE REAL AMOUNT
-                'currency' => $existingPayment->currency ?? 'USD', // ✅ USE REAL CURRENCY
-                'customerEmail' => $existingPayment->customer['email'] ?? 'test@example.com', // ✅ REAL CUSTOMER
-                'customerFullName' => $existingPayment->customer['name'] ?? 'Test Customer', // ✅ REAL NAME
-                'customerIdentification' => $existingPayment->customer['identification'] ?? '1234567890',
-                'transferNumber' => 'SIM-'.time(),
-                'branchId' => config('deuna.point_of_sale'), // ✅ USE REAL BRANCH
-                'posId' => config('deuna.point_of_sale'), // ✅ USE REAL POS
-                'timestamp' => now()->toISOString(),
-                'data' => [
-                    'payment_id' => $paymentId,
-                    'status' => 'completed',
-                    'transaction_id' => 'TXN-SIM-'.time(),
-                ],
-                // ✅ CRITICAL: Include the REAL payment items with product_id
-                'items' => $existingPayment->items ?: [],
-                // Metadata to identify this as a simulation
-                'simulation' => true,
-                'simulated_at' => now()->toISOString(),
-            ];
-
-            Log::info('🔧 Webhook data prepared for simulation', [
-                'payment_id' => $paymentId,
-                'amount' => $webhookData['amount'],
-                'currency' => $webhookData['currency'],
-                'customer_email' => $webhookData['customerEmail'],
-                'items_count' => count($webhookData['items']),
-                'has_product_ids' => ! empty($webhookData['items']) ? array_column($webhookData['items'], 'product_id') : 'no_items',
-            ]);
-
-            Log::info('🚀 Processing simulated webhook data', [
-                'payment_id' => $paymentId,
-                'webhook_data' => $webhookData,
-            ]);
-
-            // Process the simulated webhook using the real handler
-            $result = $this->handleWebhookUseCase->execute($webhookData, '');
-
-            Log::info('✅ Simulated payment webhook processed successfully', [
-                'payment_id' => $paymentId,
-                'result' => $result,
-            ]);
-
-            // Verify that order was actually created
-            try {
-                $createdOrder = \App\Models\Order::where('id', $existingPayment->order_id)->first();
-                $orderCreated = $createdOrder !== null;
-
-                Log::info('🔍 Post-webhook verification', [
-                    'payment_id' => $paymentId,
-                    'order_id' => $existingPayment->order_id,
-                    'order_created' => $orderCreated,
-                    'order_total' => $orderCreated ? $createdOrder->total : null,
-                    'webhook_processed' => $result['processed'] ?? false,
-                ]);
-
-            } catch (\Exception $e) {
-                Log::error('❌ Error verifying order creation', [
-                    'payment_id' => $paymentId,
-                    'error' => $e->getMessage(),
-                ]);
-                $orderCreated = false;
+                    'message' => 'Payment simulation processing failed',
+                    'error' => $processingResult['message'] ?? 'Unknown error',
+                ], 400);
             }
 
             return response()->json([
-                'success' => true,
-                'message' => 'Payment simulation completed successfully',
-                'data' => [
-                    'payment_id' => $paymentId,
-                    'simulated_status' => 'completed',
-                    'webhook_result' => $result,
-                    'order_created' => $orderCreated ?? ($result['processed'] ?? false),
-                    'order_id' => $existingPayment->order_id ?? null,
-                    'simulation_time' => now()->toISOString(),
-                ],
-                'note' => '🧪 This was a simulated payment for testing purposes',
-            ]);
+                'success' => false,
+                'message' => 'Payment simulation validation failed',
+                'error' => $validationResult->errorMessage,
+                'error_code' => $validationResult->errorCode,
+            ], 400);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid request data',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('❌ Error simulating payment success', [
                 'payment_id' => $request->input('payment_id'),
