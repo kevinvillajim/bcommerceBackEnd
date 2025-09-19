@@ -87,11 +87,15 @@ class ExternalPaymentPublicController extends Controller
     {
         try {
             $validated = $request->validate([
+                'given_name' => 'required|string|max:48',
+                'surname' => 'required|string|max:48',
+                'identification' => 'required|string|size:10|regex:/^\d{10}$/',
+                'middle_name' => 'nullable|string|max:50',
                 'email' => 'required|email',
                 'phone' => 'required|string',
                 'address' => 'required|string',
                 'city' => 'required|string',
-                'postal_code' => 'required|string',
+                'postal_code' => 'nullable|string',
             ]);
 
             $link = ExternalPaymentLink::where('link_code', $linkCode)->first();
@@ -103,8 +107,8 @@ class ExternalPaymentPublicController extends Controller
                 ], 400);
             }
 
-            // Generar transaction_id único
-            $transactionId = 'EXT_' . $link->link_code . '_' . time();
+            // Generar transaction_id único (mismo formato que sistema principal)
+            $transactionId = 'TXN_' . $link->link_code . '_' . time();
 
             // Usar ExternalDatafastService para crear checkout con datos reales del cliente
             $checkoutResult = $this->externalDatafastService->createCheckout([
@@ -114,10 +118,13 @@ class ExternalPaymentPublicController extends Controller
                 'transaction_id' => $transactionId, // Campo requerido por validatePhase2Structure
                 'link_code' => $linkCode, // Para construir shopperResultUrl interno
                 'customer' => [
-                    'given_name' => $link->customer_name,
-                    'surname' => $link->customer_name,
+                    'id' => $link->created_by, // ID del usuario que creó el link
+                    'given_name' => $validated['given_name'],
+                    'surname' => $validated['surname'],
+                    'middle_name' => $validated['middle_name'] ?? '',
                     'email' => $validated['email'],
                     'phone' => $validated['phone'],
+                    'doc_id' => $validated['identification'],
                 ],
                 'billing' => [
                     'street' => $validated['address'], // Usar 'street' como espera el servicio
@@ -125,7 +132,7 @@ class ExternalPaymentPublicController extends Controller
                     'city' => $validated['city'],
                     'state' => $validated['city'],
                     'country' => 'EC',
-                    'postcode' => $validated['postal_code'],
+                    'postcode' => $validated['postal_code'] ?? '',
                 ],
                 'shipping' => [
                     'street' => $validated['address'], // Usar 'street' como espera el servicio
@@ -133,7 +140,7 @@ class ExternalPaymentPublicController extends Controller
                     'city' => $validated['city'],
                     'state' => $validated['city'],
                     'country' => 'EC',
-                    'postcode' => $validated['postal_code'],
+                    'postcode' => $validated['postal_code'] ?? '',
                 ],
                 'customParameters' => [
                     'external_payment_link_id' => $link->id,
@@ -205,11 +212,15 @@ class ExternalPaymentPublicController extends Controller
     {
         try {
             $validated = $request->validate([
+                'given_name' => 'required|string|max:48',
+                'surname' => 'required|string|max:48',
+                'identification' => 'required|string|size:10|regex:/^\d{10}$/',
+                'middle_name' => 'nullable|string|max:50',
                 'email' => 'required|email',
                 'phone' => 'required|string',
                 'address' => 'required|string',
                 'city' => 'required|string',
-                'postal_code' => 'required|string',
+                'postal_code' => 'nullable|string',
             ]);
 
             $link = ExternalPaymentLink::where('link_code', $linkCode)->first();

@@ -40,67 +40,17 @@ class ExternalDatafastService
         try {
             $url = $this->baseUrl . '/v1/checkouts';
 
-            // Simple validation
-            if (!isset($orderData['amount']) || $orderData['amount'] <= 0) {
-                throw new \Exception('Invalid amount for checkout');
-            }
+            // USAR BUILDPHASE2DATA COMO SISTEMA PRINCIPAL
+            $data = $this->buildPhase2Data($orderData);
 
-            // Calculate tax amounts for external payments (amount already includes IVA)
-            $amount = $orderData['amount'];
-            // Para pagos externos: el valor ya viene CON IVA incluido
-            // Calculamos la desglose para Datafast pero no modificamos el total
-            $taxRate = 0.15; // 15% IVA Ecuador (fijo para desglose)
-            $baseImponible = round($amount / (1 + $taxRate), 2); // Base sin IVA
-            $taxAmount = round($amount - $baseImponible, 2); // IVA calculado
-            $base0 = 0.00; // Productos exentos de impuestos
-
-            // Build data for external payments with all required parameters
-            $data = [
-                'entityId' => $this->entityId,
-                'amount' => number_format($amount, 2, '.', ''),
-                'currency' => 'USD',
-                'paymentType' => 'DB',
-                'customer.givenName' => $orderData['customer']['given_name'] ?? 'Cliente',
-                'customer.surname' => $orderData['customer']['surname'] ?? 'Externo',
-                'customer.email' => $orderData['customer']['email'],
-                'customer.phone' => $orderData['customer']['phone'],
-                'shipping.street1' => $orderData['shipping']['street'],
-                'shipping.city' => $orderData['shipping']['city'],
-                'shipping.country' => 'EC',
-                'billing.street1' => $orderData['billing']['street'],
-                'billing.city' => $orderData['billing']['city'],
-                'billing.country' => 'EC',
-
-                // URL de resultado corregida - frontend puerto 3000
-                'shopperResultUrl' => env('FRONTEND_URL', 'http://localhost:3000') . '/pay/' . $orderData['link_code'] . '/result',
-
-                // Parámetros críticos del comercio (igual que servicio original)
-                'customParameters[SHOPPER_MID]' => $this->isProduction ?
-                    config('services.datafast.production.mid') :
-                    config('services.datafast.test.mid', '1000000505'),
-                'customParameters[SHOPPER_TID]' => $this->isProduction ?
-                    config('services.datafast.production.tid') :
-                    config('services.datafast.test.tid', 'PD100406'),
-                'customParameters[SHOPPER_ECI]' => '0103910',
-                'customParameters[SHOPPER_PSERV]' => '17913101',
-                'customParameters[SHOPPER_VERSIONDF]' => '2',
-
-                // Parámetros de impuestos obligatorios
-                'customParameters[SHOPPER_VAL_BASE0]' => number_format($base0, 2, '.', ''),
-                'customParameters[SHOPPER_VAL_BASEIMP]' => number_format($baseImponible, 2, '.', ''),
-                'customParameters[SHOPPER_VAL_IVA]' => number_format($taxAmount, 2, '.', ''),
-            ];
-
-            Log::info('ExternalDatafastService: Creating checkout with external payment parameters', [
+            Log::info('ExternalDatafastService: Creating checkout with Fase 2 data', [
                 'url' => $url,
-                'amount_with_iva_included' => $data['amount'],
-                'customer_email' => $data['customer.email'],
-                'shopper_result_url' => $data['shopperResultUrl'],
+                'amount' => $data['amount'],
+                'customer_name' => $data['customer.givenName'] . ' ' . $data['customer.surname'],
+                'doc_id' => $data['customer.identificationDocId'],
                 'has_merchant_params' => isset($data['customParameters[SHOPPER_MID]']),
                 'has_tax_params' => isset($data['customParameters[SHOPPER_VAL_IVA]']),
-                'base_imponible_calculated' => $baseImponible,
-                'tax_amount_calculated' => $taxAmount,
-                'external_payment_mode' => 'amount_includes_iva',
+                'use_phase2' => true,
             ]);
 
             $response = Http::timeout(30)
@@ -229,5 +179,248 @@ class ExternalDatafastService
                 'message' => 'Error verifying payment: ' . $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Construir datos para Datafast Fase 2 - External Payments
+     * Adaptado para valores fijos que YA incluyen IVA
+     */
+    private function buildPhase2Data(array $orderData): array
+    {
+        // Validar estructura básica requerida para Fase 2
+        $this->validatePhase2Structure($orderData);
+
+        // Para External Payments: el amount YA incluye IVA, solo desglosar
+        $amount = $orderData['amount'];
+        $taxRate = 0.15; // 15% IVA Ecuador (fijo para desglose)
+        $baseImponible = round($amount / (1 + $taxRate), 2); // Base sin IVA
+        $taxAmount = round($amount - $baseImponible, 2); // IVA calculado
+        $base0 = 0.00; // Productos exentos de impuestos
+
+        $customer = $orderData['customer'];
+
+        $data = [
+            'entityId' => $this->entityId,
+            'amount' => number_format($amount, 2, '.', ''),
+            'currency' => 'USD',
+            'paymentType' => 'DB',
+
+            // Datos del cliente - usando métodos de formato
+            'customer.givenName' => $this->sanitizeString($customer['given_name'], 48),
+            'customer.middleName' => $this->sanitizeString($customer['middle_name'] ?? '', 50),
+            'customer.surname' => $this->sanitizeString($customer['surname'], 48),
+            'customer.ip' => $this->getValidIp($customer['ip'] ?? request()->ip()),
+            'customer.merchantCustomerId' => $this->sanitizeString($customer['id'], 16),
+            'merchantTransactionId' => $this->sanitizeString($orderData['transaction_id'] ?? ('TXN_'.time()), 255),
+            'customer.email' => $this->validateEmail($customer['email']),
+            'customer.identificationDocType' => 'IDCARD',
+            'customer.identificationDocId' => $this->formatDocumentId($customer['doc_id']),
+            'customer.phone' => $this->formatPhone($customer['phone']),
+
+            // Datos de envío y facturación
+            'shipping.street1' => $this->sanitizeString(
+                $this->validateAddress($orderData['shipping']['street'] ?? $orderData['shipping']['address'] ?? null),
+                100
+            ),
+            'shipping.city' => $this->sanitizeString($orderData['shipping']['city'], 50),
+            'shipping.country' => $this->formatCountryCode($orderData['shipping']['country'] ?? 'EC'),
+            'billing.street1' => $this->sanitizeString(
+                $this->validateAddress($orderData['billing']['street'] ?? $orderData['billing']['address'] ?? null),
+                100
+            ),
+            'billing.city' => $this->sanitizeString($orderData['billing']['city'], 50),
+            'billing.country' => $this->formatCountryCode($orderData['billing']['country'] ?? 'EC'),
+
+            // Modo de prueba Fase 2
+            'testMode' => 'EXTERNAL',
+
+            // URL de resultado para External Payments
+            'shopperResultUrl' => env('FRONTEND_URL', 'http://localhost:3000') . '/pay/' . $orderData['link_code'] . '/result',
+
+            // Parámetros de impuestos
+            'customParameters[SHOPPER_VAL_BASE0]' => number_format($base0, 2, '.', ''),
+            'customParameters[SHOPPER_VAL_BASEIMP]' => number_format($baseImponible, 2, '.', ''),
+            'customParameters[SHOPPER_VAL_IVA]' => number_format($taxAmount, 2, '.', ''),
+
+            // Datos del comercio
+            'customParameters[SHOPPER_MID]' => $this->isProduction ?
+                config('services.datafast.production.mid') :
+                config('services.datafast.test.mid', '1000000505'),
+            'customParameters[SHOPPER_TID]' => $this->isProduction ?
+                config('services.datafast.production.tid') :
+                config('services.datafast.test.tid', 'PD100406'),
+
+            // Datos de identificación
+            'customParameters[SHOPPER_ECI]' => '0103910',
+            'customParameters[SHOPPER_PSERV]' => '17913101',
+            'customParameters[SHOPPER_VERSIONDF]' => '2',
+
+            // Risk parameters (nombre del comercio)
+            'risk.parameters[USER_DATA2]' => $this->sanitizeString(config('app.name', 'MiComercio'), 30),
+
+            // Datos del producto para External Payments - sanitizado como sistema principal
+            'cart.items[0].name' => $this->sanitizeString($orderData['description'] ?? 'Pago Externo', 255),
+            'cart.items[0].description' => $this->sanitizeString($orderData['description'] ?? 'Pago mediante link externo', 255),
+            'cart.items[0].price' => number_format($amount, 2, '.', ''),
+            'cart.items[0].quantity' => max(1, intval(1)),
+        ];
+
+        // Validar datos finales
+        $this->validateBuiltPhase2Data($data);
+
+        Log::info('External Datafast Fase 2: Datos completos construidos', [
+            'amount' => $data['amount'],
+            'customer_name' => $data['customer.givenName'].' '.$data['customer.surname'],
+            'doc_id' => $data['customer.identificationDocId'],
+            'base_imponible' => $baseImponible,
+            'tax_amount' => $taxAmount,
+        ]);
+
+        return $data;
+    }
+
+    /**
+     * Validar estructura básica requerida para Fase 2
+     */
+    private function validatePhase2Structure(array $orderData): void
+    {
+        $requiredFields = ['customer', 'shipping', 'billing'];
+
+        foreach ($requiredFields as $field) {
+            if (!isset($orderData[$field])) {
+                throw new \Exception("Campo requerido faltante para Fase 2: {$field}");
+            }
+        }
+
+        if (!is_array($orderData['customer'])) {
+            throw new \Exception('El campo customer debe ser un array');
+        }
+    }
+
+    /**
+     * Validar datos finales construidos para Fase 2
+     */
+    private function validateBuiltPhase2Data(array $data): void
+    {
+        $requiredDataFields = [
+            'customer.givenName',
+            'customer.surname',
+            'customer.email',
+            'customer.identificationDocId',
+            'entityId',
+            'amount',
+        ];
+
+        foreach ($requiredDataFields as $field) {
+            if (empty($data[$field])) {
+                throw new \Exception("Campo de datos construidos faltante: {$field}");
+            }
+        }
+    }
+
+    /**
+     * Sanitizar string según longitud máxima
+     */
+    private function sanitizeString(string $value, int $maxLength): string
+    {
+        // Remover caracteres especiales problemáticos
+        $value = str_replace(['&', '<', '>', '"', "'"], '', $value);
+        $value = trim($value);
+
+        // Truncar a longitud máxima
+        return substr($value, 0, $maxLength);
+    }
+
+    /**
+     * Formatear documento de identidad (cédula)
+     */
+    private function formatDocumentId(string $docId): string
+    {
+        if (empty($docId)) {
+            throw new \Exception('Cédula del cliente es requerida');
+        }
+
+        // Remover todo lo que no sea dígito
+        $docId = preg_replace('/\D/', '', $docId);
+
+        if (strlen($docId) !== 10) {
+            throw new \Exception('Cédula del cliente debe tener exactamente 10 dígitos: ' . $docId);
+        }
+
+        return $docId;
+    }
+
+    /**
+     * Formatear teléfono
+     */
+    private function formatPhone(string $phone): string
+    {
+        if (empty($phone)) {
+            throw new \Exception('Teléfono del cliente es requerido');
+        }
+
+        // Remover espacios y caracteres especiales, mantener solo números y +
+        $phone = preg_replace('/[^\d+]/', '', $phone);
+
+        if (strlen($phone) < 7) {
+            throw new \Exception('Teléfono del cliente inválido (muy corto): ' . $phone);
+        }
+
+        return substr($phone, 0, 25);
+    }
+
+    /**
+     * Validar email
+     */
+    private function validateEmail(?string $email): string
+    {
+        if (empty($email)) {
+            throw new \Exception('Email del cliente es requerido - no se permiten datos falsos');
+        }
+
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new \Exception('Email del cliente inválido: ' . $email);
+        }
+
+        return substr($email, 0, 128);
+    }
+
+    /**
+     * Validar dirección requerida
+     */
+    private function validateAddress(?string $address): string
+    {
+        if (empty($address)) {
+            throw new \Exception('Dirección del cliente es requerida - no se permiten datos falsos');
+        }
+
+        return trim($address);
+    }
+
+    /**
+     * Obtener IP válida
+     */
+    private function getValidIp(string $ip): string
+    {
+        if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+            return '127.0.0.1'; // IP por defecto
+        }
+
+        return $ip;
+    }
+
+    /**
+     * Formatear código de país a 2 caracteres
+     */
+    private function formatCountryCode(string $country): string
+    {
+        $country = strtoupper(trim($country));
+
+        // Validar que sean exactamente 2 caracteres alfabéticos
+        if (strlen($country) === 2 && preg_match('/^[A-Z]{2}$/', $country)) {
+            return $country;
+        }
+
+        return 'EC'; // País por defecto
     }
 }
