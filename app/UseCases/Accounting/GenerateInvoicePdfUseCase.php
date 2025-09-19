@@ -54,9 +54,22 @@ class GenerateInvoicePdfUseCase
             Storage::disk('public')->put($filePath, $pdfContent);
 
             // ✅ Actualizar la factura con la ruta del PDF
-            $invoice->update([
+            Log::info('🔍 DEBUG: Antes de actualizar pdf_path en BD', [
+                'invoice_id' => $invoice->id,
+                'pdf_path_to_save' => $filePath,
+                'current_pdf_path' => $invoice->pdf_path,
+            ]);
+
+            $updateResult = $invoice->update([
                 'pdf_path' => $filePath,
                 'pdf_generated_at' => now(),
+            ]);
+
+            Log::info('🔍 DEBUG: Después de actualizar pdf_path en BD', [
+                'invoice_id' => $invoice->id,
+                'update_result' => $updateResult,
+                'pdf_path_after_update' => $invoice->pdf_path,
+                'pdf_generated_at' => $invoice->pdf_generated_at,
             ]);
 
             Log::info('PDF de factura generado exitosamente', [

@@ -288,6 +288,45 @@ class MailManager
     }
 
     /**
+     * Send credit note email with PDF attachment
+     */
+    public function sendCreditNoteEmail(User $user, \App\Models\CreditNote $creditNote, string $pdfPath): bool
+    {
+        try {
+            // Prepare recipients: customer + backup email
+            $recipients = [
+                $creditNote->customer_email, // Cliente de la nota de crédito
+                // TODO: Descomentar para producción cuando se cree el email facturacion@comersia.app
+                // 'facturacion@comersia.app', // Backup empresa
+            ];
+
+            // Send to each recipient
+            foreach ($recipients as $email) {
+                Mail::to($email)->send(new \App\Mail\CreditNoteMail($user, $creditNote, $pdfPath));
+            }
+
+            Log::info('Credit note email sent successfully', [
+                'credit_note_id' => $creditNote->id,
+                'credit_note_number' => $creditNote->credit_note_number,
+                'recipients' => $recipients,
+                'pdf_path' => $pdfPath,
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to send credit note email', [
+                'credit_note_id' => $creditNote->id,
+                'credit_note_number' => $creditNote->credit_note_number,
+                'customer_email' => $creditNote->customer_email,
+                'pdf_path' => $pdfPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
      * Send invoice email with PDF attachment
      */
     public function sendInvoiceEmail(User $user, \App\Models\Invoice $invoice, string $pdfPath): bool
@@ -296,7 +335,8 @@ class MailManager
             // Prepare recipients: customer + backup email
             $recipients = [
                 $invoice->customer_email, // Cliente de la factura
-                'facturacion@comersia.app', // Backup empresa
+                // TODO: Descomentar para producción cuando se cree el email facturacion@comersia.app
+                // 'facturacion@comersia.app', // Backup empresa
             ];
 
             // Send to each recipient
@@ -366,6 +406,12 @@ class MailManager
                 'description' => 'Email con factura electrónica adjunta',
                 'template' => 'emails.invoices.simple',
                 'mailable' => \App\Mail\InvoiceMail::class,
+            ],
+            'credit_note' => [
+                'name' => 'Nota de Crédito Electrónica',
+                'description' => 'Email con nota de crédito electrónica adjunta',
+                'template' => 'emails.credit-notes.simple',
+                'mailable' => \App\Mail\CreditNoteMail::class,
             ],
         ];
     }

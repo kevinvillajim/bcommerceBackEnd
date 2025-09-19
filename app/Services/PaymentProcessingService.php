@@ -50,7 +50,20 @@ class PaymentProcessingService
                 // 1. Recuperar CheckoutData temporal
                 $checkoutData = $this->checkoutDataService->retrieve($sessionId);
                 if (! $checkoutData) {
-                    throw new Exception("CheckoutData no encontrado o expirado para sessionId: {$sessionId}");
+                    Log::error('❌ CheckoutData no encontrado en cache', [
+                        'session_id' => $sessionId,
+                        'transaction_id' => $paymentResult->transactionId,
+                        'payment_method' => $paymentResult->paymentMethod,
+                        'cache_key_attempted' => "checkout_data_{$sessionId}",
+                        'possible_causes' => [
+                            'session_expired_after_30min',
+                            'frontend_didnt_save_session_id',
+                            'cache_cleared_manually',
+                            'different_session_id_format'
+                        ]
+                    ]);
+
+                    throw new Exception("CheckoutData no encontrado o expirado para sessionId: {$sessionId}. El pago fue exitoso pero no se puede procesar la orden sin datos de checkout.");
                 }
 
                 Log::info('✅ CheckoutData recuperado para procesamiento', [

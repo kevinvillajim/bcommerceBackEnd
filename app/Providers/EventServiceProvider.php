@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Events\CreditNoteApproved;
 use App\Events\FeedbackCreated;
 use App\Events\FeedbackReviewed;
 use App\Events\InvoiceApproved;
@@ -21,6 +22,7 @@ use App\Events\SellerStrikeAdded;
 use App\Events\ShippingDelayed;
 use App\Events\ShippingStatusUpdated;
 use App\Listeners\GenerateInvoiceFromOrderListener;
+use App\Listeners\GeneratePdfFromCreditNoteListener;
 use App\Listeners\GeneratePdfFromInvoiceListener;
 use App\Listeners\NotifyAdminOfFeedback;
 use App\Listeners\NotifyAdminSellerRankUp;
@@ -32,6 +34,7 @@ use App\Listeners\NotifySellerOfNewOrder;
 use App\Listeners\NotifySellerOfShippingDelay;
 use App\Listeners\NotifySellerOfStrike;
 use App\Listeners\NotifySellerRankChanged;
+use App\Listeners\SendCreditNoteEmailListener;
 use App\Listeners\SendFeedbackResponseNotification;
 // Seller notification listeners
 use App\Listeners\SendInvoiceEmailListener;
@@ -71,6 +74,12 @@ class EventServiceProvider extends ServiceProvider
         InvoiceApproved::class => [
             GeneratePdfFromInvoiceListener::class, // ✅ Generar PDF automáticamente
             SendInvoiceEmailListener::class, // ✅ Enviar email con PDF adjunto
+        ],
+
+        // ✅ NUEVO: Evento para notas de crédito aprobadas por SRI
+        CreditNoteApproved::class => [
+            GeneratePdfFromCreditNoteListener::class, // ✅ Generar PDF automáticamente
+            SendCreditNoteEmailListener::class, // ✅ Enviar email con PDF adjunto
         ],
 
         OrderCompleted::class => [

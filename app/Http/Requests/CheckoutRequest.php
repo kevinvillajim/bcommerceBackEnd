@@ -81,6 +81,13 @@ class CheckoutRequest extends FormRequest
             'calculated_totals.shipping' => 'required|numeric|min:0',
             'calculated_totals.total' => 'required|numeric|min:0.01',
             'calculated_totals.total_discounts' => 'required|numeric|min:0',
+
+            // ✅ CRÍTICO: Validaciones específicas para Datafast
+            'customer' => 'required_if:payment.method,datafast|array',
+            'customer.doc_id' => 'required_if:payment.method,datafast|string|size:10|regex:/^\d{10}$/',
+            'customer.given_name' => 'required_if:payment.method,datafast|string|max:48',
+            'customer.surname' => 'required_if:payment.method,datafast|string|max:48',
+            'customer.phone' => 'required_if:payment.method,datafast|string|min:7|max:25',
         ];
     }
 
@@ -156,6 +163,17 @@ class CheckoutRequest extends FormRequest
             'calculated_totals.shipping.required' => 'El costo de envío es requerido.',
             'calculated_totals.total.required' => 'El total es requerido.',
             'calculated_totals.total_discounts.required' => 'El total de descuentos es requerido.',
+
+            // ✅ CRÍTICO: Mensajes para validaciones de Datafast
+            'customer.required_if' => 'Los datos del cliente son requeridos para pagos con Datafast.',
+            'customer.doc_id.required_if' => 'La cédula (10 dígitos) es requerida para pagos con Datafast.',
+            'customer.doc_id.size' => 'La cédula debe tener exactamente 10 dígitos para Datafast.',
+            'customer.doc_id.regex' => 'La cédula debe contener solo números (no se permiten RUCs de 13 dígitos para Datafast).',
+            'customer.given_name.required_if' => 'El nombre es requerido para pagos con Datafast.',
+            'customer.surname.required_if' => 'El apellido es requerido para pagos con Datafast.',
+            'customer.phone.required_if' => 'El teléfono es requerido para pagos con Datafast.',
+            'customer.phone.min' => 'El teléfono debe tener al menos 7 dígitos.',
+            'customer.phone.max' => 'El teléfono no puede tener más de 25 caracteres.',
         ];
     }
 
@@ -189,6 +207,38 @@ class CheckoutRequest extends FormRequest
                     if (isset($item['quantity']) && $item['quantity'] <= 0) {
                         $validator->errors()->add("items.{$index}.quantity", 'La cantidad debe ser mayor a 0.');
                     }
+                }
+            }
+
+            // ✅ CRÍTICO: Validación específica para Datafast - NUNCA permitir RUCs
+            if ($this->input('payment.method') === 'datafast') {
+                // Validar customer.doc_id específicamente para Datafast
+                $customerDocId = $this->input('customer.doc_id');
+                if ($customerDocId) {
+                    $cleanDocId = preg_replace('/\D/', '', $customerDocId);
+
+                    if (strlen($cleanDocId) === 13) {
+                        $validator->errors()->add(
+                            'customer.doc_id',
+                            'Datafast no acepta RUCs de 13 dígitos. Use solo la cédula de 10 dígitos.'
+                        );
+                    } elseif (strlen($cleanDocId) !== 10) {
+                        $validator->errors()->add(
+                            'customer.doc_id',
+                            'Para pagos con Datafast, la cédula debe tener exactamente 10 dígitos.'
+                        );
+                    }
+                }
+
+                // Validar que no se envíen identificaciones largas en otros campos
+                $shippingId = $this->input('shippingAddress.identification');
+                if ($shippingId && strlen(preg_replace('/\D/', '', $shippingId)) === 13) {
+                    // Log de warning pero no fallar - los formularios shipping pueden tener RUC
+                    \Log::warning('Datafast: Detectado RUC en shippingAddress.identification', [
+                        'user_id' => $this->user()?->id,
+                        'shipping_id' => $shippingId,
+                        'customer_doc_id' => $customerDocId,
+                    ]);
                 }
             }
         });

@@ -37,11 +37,12 @@ class GenerateEarningsReportPdfUseCase
                 $startDate = now()->subMonth()->format('Y-m-d');
             }
 
-            // Obtener métricas generales
-            $earningsData = $this->calculateEarningsData($seller->id, $startDate, $endDate);
+            // Obtener métricas generales usando el mismo controlador
+            $earningsController = app(\App\Http\Controllers\SellerEarningsController::class);
+            $earningsData = $this->getEarningsFromController($seller->id, $startDate, $endDate);
 
-            // Obtener desglose mensual (últimos 12 meses)
-            $monthlyData = $this->getMonthlyBreakdown($seller->id);
+            // Obtener desglose mensual para el período filtrado
+            $monthlyData = $this->getMonthlyBreakdownFromController($seller->id, $startDate, $endDate);
 
             // Preparar datos para la plantilla
             $pdfData = [
@@ -327,6 +328,273 @@ class GenerateEarningsReportPdfUseCase
                 ];
             }
         } catch (Exception $e) {
+            Log::error("Error calculating shipping distribution for order {$orderId}: " . $e->getMessage());
+            return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
+        }
+    }
+
+    /**
+     * Obtener datos de earnings usando el controlador (mismo cálculo que la vista web)
+     */
+    private function getEarningsFromController(int $sellerId, string $startDate, string $endDate): array
+    {
+        $controller = app(\App\Http\Controllers\SellerEarningsController::class);
+
+        // Simular request con los parámetros de fecha
+        $request = new \Illuminate\Http\Request([
+            'start_date' => $startDate,
+            'end_date' => $endDate
+        ]);
+
+        // Usar cálculos directos en lugar de reflection
+        $totalEarningsData = $this->calculateTotalEarningsForPdf($sellerId);
+        $currentPeriodData = $this->calculatePeriodEarningsForPdf($sellerId, $startDate, $endDate);
+
+        // Calcular período anterior comparable
+        $startDateTime = \Carbon\Carbon::parse($startDate);
+        $endDateTime = \Carbon\Carbon::parse($endDate);
+        $daysDiff = $endDateTime->diffInDays($startDateTime);
+
+        $previousStartDate = $startDateTime->copy()->subDays($daysDiff + 1)->format('Y-m-d');
+        $previousEndDate = $startDateTime->copy()->subDay()->format('Y-m-d');
+        $previousPeriodData = $this->calculatePeriodEarningsForPdf($sellerId, $previousStartDate, $previousEndDate);
+
+        // Calcular crecimiento
+        $salesGrowth = 0;
+        $earningsGrowth = 0;
+
+        if ($previousPeriodData['sales'] > 0) {
+            $salesGrowth = (($currentPeriodData['sales'] - $previousPeriodData['sales']) / $previousPeriodData['sales']) * 100;
+        }
+
+        if ($previousPeriodData['net_earnings'] > 0) {
+            $earningsGrowth = (($currentPeriodData['net_earnings'] - $previousPeriodData['net_earnings']) / $previousPeriodData['net_earnings']) * 100;
+        }
+
+        return [
+            'total_earnings' => $totalEarningsData['total_net_earnings'],
+            'pending_payments' => 0, // Se removió según requerimiento
+            'sales_this_period' => $currentPeriodData['sales'],
+            'sales_growth' => $salesGrowth,
+            'commissions_this_period' => $currentPeriodData['commissions'],
+            'commissions_percentage' => $this->configService->getConfig('platform.commission_rate', 10.0),
+            'net_earnings_this_period' => $currentPeriodData['net_earnings'],
+            'earnings_growth' => $earningsGrowth,
+            'total_sales_all_time' => $totalEarningsData['total_sales'],
+            'total_commissions_all_time' => $totalEarningsData['total_commissions'],
+            'period' => [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'previous_period' => [
+                    'start' => $previousStartDate,
+                    'end' => $previousEndDate,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Obtener desglose mensual usando el controlador (mismo cálculo que la vista web)
+     */
+    private function getMonthlyBreakdownFromController(int $sellerId, string $startDate, string $endDate): array
+    {
+        $controller = app(\App\Http\Controllers\SellerEarningsController::class);
+        $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
+
+        // Generar datos mensuales para el período especificado
+        $startDate = \Carbon\Carbon::parse($startDate);
+        $endDate = \Carbon\Carbon::parse($endDate);
+
+        $currentDate = $startDate->copy()->startOfMonth();
+        $endMonth = $endDate->copy()->endOfMonth();
+        $monthlyData = [];
+
+        while ($currentDate <= $endMonth) {
+            $monthStart = $currentDate->format('Y-m-d');
+            $monthEnd = $currentDate->copy()->endOfMonth()->format('Y-m-d');
+
+            // Ajustar fechas si el mes se sale del rango solicitado
+            if ($currentDate->copy()->startOfMonth() < $startDate) {
+                $monthStart = $startDate->format('Y-m-d');
+            }
+            if ($currentDate->copy()->endOfMonth() > $endDate) {
+                $monthEnd = $endDate->format('Y-m-d');
+            }
+
+            $periodData = $this->calculatePeriodEarningsForPdf($sellerId, $monthStart, $monthEnd);
+
+            $monthlyData[] = [
+                'month' => $currentDate->format('M Y'),
+                'month_short' => $currentDate->format('M'),
+                'year' => $currentDate->format('Y'),
+                'sales' => round($periodData['sales'], 2),
+                'commissions' => round($periodData['commissions'], 2),
+                'net' => round($periodData['net_earnings'], 2),
+                'orders_count' => $periodData['orders_count']
+            ];
+
+            $currentDate->addMonth();
+        }
+
+        return $monthlyData;
+    }
+
+    /**
+     * Calcular earnings totales históricos para PDF (usando filtro 'shipped')
+     */
+    private function calculateTotalEarningsForPdf(int $sellerId): array
+    {
+        $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
+
+        $totalSales = \App\Models\SellerOrder::where('seller_id', $sellerId)
+            ->where('status', 'shipped')
+            ->sum('total');
+
+        $totalCommissions = $totalSales * ($commissionRate / 100);
+        $totalNetEarnings = $totalSales - $totalCommissions;
+
+        // Agregar earnings de envío
+        $shippingEarnings = $this->calculateTotalShippingEarningsForPdf($sellerId);
+
+        return [
+            'total_sales' => $totalSales,
+            'total_commissions' => $totalCommissions,
+            'total_net_earnings' => $totalNetEarnings + $shippingEarnings,
+            'shipping_earnings' => $shippingEarnings
+        ];
+    }
+
+    /**
+     * Calcular earnings para un período específico para PDF (usando filtro 'shipped')
+     */
+    private function calculatePeriodEarningsForPdf(int $sellerId, string $startDate, string $endDate): array
+    {
+        $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
+
+        $periodSales = \App\Models\SellerOrder::where('seller_id', $sellerId)
+            ->where('status', 'shipped')
+            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->sum('total');
+
+        $periodCommissions = $periodSales * ($commissionRate / 100);
+        $periodNetEarnings = $periodSales - $periodCommissions;
+
+        $ordersCount = \App\Models\SellerOrder::where('seller_id', $sellerId)
+            ->where('status', 'shipped')
+            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->count();
+
+        // Agregar earnings de envío del período
+        $shippingEarnings = $this->calculatePeriodShippingEarningsForPdf($sellerId, $startDate, $endDate);
+
+        return [
+            'sales' => $periodSales,
+            'commissions' => $periodCommissions,
+            'net_earnings' => $periodNetEarnings + $shippingEarnings,
+            'shipping_earnings' => $shippingEarnings,
+            'orders_count' => $ordersCount
+        ];
+    }
+
+    /**
+     * Calcular earnings de envío total
+     */
+    private function calculateTotalShippingEarningsForPdf(int $sellerId): float
+    {
+        $sellerOrders = \App\Models\SellerOrder::where('seller_id', $sellerId)
+            ->where('status', 'delivered')
+            ->get();
+
+        $totalShippingEarnings = 0;
+
+        foreach ($sellerOrders as $sellerOrder) {
+            $shippingDistribution = $this->calculateShippingDistributionForPdf($sellerOrder->order_id);
+            $totalShippingEarnings += $shippingDistribution['seller_amount'] ?? 0;
+        }
+
+        return $totalShippingEarnings;
+    }
+
+    /**
+     * Calcular earnings de envío para un período
+     */
+    private function calculatePeriodShippingEarningsForPdf(int $sellerId, string $startDate, string $endDate): float
+    {
+        $sellerOrders = \App\Models\SellerOrder::where('seller_id', $sellerId)
+            ->where('status', 'delivered')
+            ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
+            ->get();
+
+        $totalShippingEarnings = 0;
+
+        foreach ($sellerOrders as $sellerOrder) {
+            $shippingDistribution = $this->calculateShippingDistributionForPdf($sellerOrder->order_id);
+            $totalShippingEarnings += $shippingDistribution['seller_amount'] ?? 0;
+        }
+
+        return $totalShippingEarnings;
+    }
+
+    /**
+     * Calcular distribución de envío
+     */
+    private function calculateShippingDistributionForPdf(int $orderId): array
+    {
+        try {
+            // Obtener la orden principal para saber el costo de envío
+            $order = \App\Models\Order::find($orderId);
+            if (!$order) {
+                return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
+            }
+
+            // Obtener el costo de envío de la orden
+            $shippingCost = $order->shipping_cost ?? 0;
+
+            if ($shippingCost <= 0) {
+                return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
+            }
+
+            // Contar cuántos sellers únicos hay en esta orden
+            $sellerCount = \App\Models\SellerOrder::where('order_id', $orderId)->distinct('seller_id')->count();
+
+            $enabled = $this->configService->getConfig('shipping_distribution.enabled', true);
+
+            if (!$enabled) {
+                return [
+                    'seller_amount' => 0,
+                    'platform_amount' => $shippingCost,
+                    'total_cost' => $shippingCost,
+                    'enabled' => false,
+                ];
+            }
+
+            if ($sellerCount === 1) {
+                // Un solo seller: recibe el porcentaje máximo configurado
+                $percentage = $this->configService->getConfig('shipping_distribution.single_seller_max', 80.0);
+                $sellerAmount = ($shippingCost * $percentage) / 100;
+                $platformAmount = $shippingCost - $sellerAmount;
+
+                return [
+                    'seller_amount' => round($sellerAmount, 2),
+                    'platform_amount' => round($platformAmount, 2),
+                    'total_cost' => $shippingCost,
+                    'enabled' => true,
+                ];
+            } else {
+                // Múltiples sellers: cada uno recibe el porcentaje configurado
+                $percentageEach = $this->configService->getConfig('shipping_distribution.multiple_sellers_each', 40.0);
+                $amountPerSeller = ($shippingCost * $percentageEach) / 100;
+                $totalDistributed = $amountPerSeller * $sellerCount;
+                $platformAmount = $shippingCost - $totalDistributed;
+
+                return [
+                    'seller_amount' => round($amountPerSeller, 2),
+                    'platform_amount' => round($platformAmount, 2),
+                    'total_cost' => $shippingCost,
+                    'enabled' => true,
+                ];
+            }
+        } catch (\Exception $e) {
             Log::error("Error calculating shipping distribution for order {$orderId}: " . $e->getMessage());
             return ['seller_amount' => 0, 'platform_amount' => 0, 'total_cost' => 0];
         }

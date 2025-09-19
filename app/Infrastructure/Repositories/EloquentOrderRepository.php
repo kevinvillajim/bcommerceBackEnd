@@ -528,6 +528,56 @@ class EloquentOrderRepository implements OrderRepositoryInterface
         }
     }
 
+    /**
+     * Update order status without affecting order items
+     */
+    public function updateStatus(int $orderId, string $status): bool
+    {
+        try {
+            $order = Order::find($orderId);
+
+            if (!$order) {
+                Log::error('❌ Order not found for status update', ['orderId' => $orderId]);
+                return false;
+            }
+
+            $previousStatus = $order->status;
+            $order->status = $status;
+
+            // Add specific timestamps based on status
+            if ($status === 'delivered') {
+                $order->delivered_at = now();
+            } elseif ($status === 'completed') {
+                $order->completed_at = now();
+            }
+
+            $result = $order->save(); // Only updates specific fields, does NOT touch OrderItems
+
+            if ($result) {
+                Log::info('✅ Order status updated successfully', [
+                    'orderId' => $orderId,
+                    'previousStatus' => $previousStatus,
+                    'newStatus' => $status
+                ]);
+
+                // Dispatch necessary events
+                event(new \App\Events\OrderStatusChanged($orderId, $previousStatus, $status, 'main_order'));
+            }
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('❌ Exception in updateStatus', [
+                'orderId' => $orderId,
+                'status' => $status,
+                'exception' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return false;
+        }
+    }
+
     public function findOrdersByUserId(int $userId): array
     {
         $orders = Order::where('user_id', $userId)->orderBy('created_at', 'desc')->get();

@@ -28,6 +28,17 @@ class SendInvoiceEmailListener
         ]);
 
         try {
+            // ✅ PROTECCIÓN ANTI-DUPLICADOS: Verificar si ya se envió el email
+            if ($event->invoice->email_sent_at !== null) {
+                Log::info('✅ PROTECCIÓN ANTI-DUPLICADOS: Email de factura ya fue enviado previamente', [
+                    'invoice_id' => $event->invoice->id,
+                    'invoice_number' => $event->invoice->invoice_number,
+                    'sent_at' => $event->invoice->email_sent_at,
+                    'protection_method' => 'email_sent_at timestamp'
+                ]);
+                return; // BLOQUEAR segundo envío
+            }
+
             // ✅ Verificar que la factura esté aprobada por el SRI
             if ($event->invoice->status !== $event->invoice::STATUS_AUTHORIZED) {
                 Log::warning('Factura no está en estado aprobado, saltando envío de email', [
@@ -38,10 +49,19 @@ class SendInvoiceEmailListener
                 return;
             }
 
+            // ✅ Refrescar el modelo para obtener el pdf_path actualizado
+            $event->invoice->refresh();
+
             // ✅ Verificar que exista un PDF generado
             if (empty($event->invoice->pdf_path)) {
                 Log::warning('No hay PDF disponible para esta factura, saltando envío de email', [
                     'invoice_id' => $event->invoice->id,
+                    'pdf_path' => $event->invoice->pdf_path,
+                    'debug_invoice_fields' => [
+                        'status' => $event->invoice->status,
+                        'created_at' => $event->invoice->created_at,
+                        'updated_at' => $event->invoice->updated_at,
+                    ]
                 ]);
 
                 return;
@@ -77,16 +97,21 @@ class SendInvoiceEmailListener
             );
 
             if ($emailSent) {
-                Log::info('Email de factura enviado exitosamente', [
+                // ✅ MARCAR TIMESTAMP: Solo cuando el email se envía exitosamente
+                $event->invoice->update(['email_sent_at' => now()]);
+
+                Log::info('✅ Email de factura enviado exitosamente y timestamp marcado', [
                     'invoice_id' => $event->invoice->id,
                     'invoice_number' => $event->invoice->invoice_number,
                     'customer_email' => $event->invoice->customer_email,
                     'pdf_path' => $event->invoice->pdf_path,
+                    'email_sent_at' => now(),
                 ]);
             } else {
-                Log::error('Error enviando email de factura', [
+                Log::error('❌ Error enviando email de factura - timestamp NO marcado', [
                     'invoice_id' => $event->invoice->id,
                     'invoice_number' => $event->invoice->invoice_number,
+                    'reason' => 'Email failed to send'
                 ]);
             }
 

@@ -10,7 +10,7 @@ use Tymon\JWTAuth\Exceptions\TokenInvalidException;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 /**
- * Middleware para validar que el usuario tenga rol 'payment' o 'super_admin'
+ * Middleware para validar que el usuario tenga rol 'payment' independiente o cualquier admin
  */
 class PaymentRoleMiddleware
 {
@@ -32,30 +32,16 @@ class PaymentRoleMiddleware
                 ], 401);
             }
 
-            // Verificar si el usuario tiene un admin asociado
-            if (!$user->admin) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Access denied. Admin account required.',
-                ], 403);
-            }
+            // Verificar si el usuario tiene rol payment independiente O es admin (cualquier admin)
+            $hasPaymentRole = $user->isPaymentUser();
+            $isAnyAdmin = $user->isAdmin();
 
-            // Verificar si el admin está activo
-            if ($user->admin->status !== 'active') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Your admin account is not active.',
-                ], 403);
-            }
-
-            // Verificar si tiene rol 'payment' o 'super_admin'
-            $allowedRoles = ['payment', 'super_admin'];
-            if (!in_array($user->admin->role, $allowedRoles)) {
+            if (!$hasPaymentRole && !$isAnyAdmin) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Access denied. Payment privileges required.',
-                    'required_roles' => $allowedRoles,
-                    'current_role' => $user->admin->role,
+                    'has_payment_role' => $hasPaymentRole,
+                    'is_admin' => $isAnyAdmin,
                 ], 403);
             }
 

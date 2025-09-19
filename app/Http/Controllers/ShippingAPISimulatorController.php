@@ -287,6 +287,16 @@ class ShippingAPISimulatorController extends Controller
             ], 403);
         }
 
+        // 🔒 SEGURIDAD: Requiere llamada manual explícita para evitar automatización
+        $isManual = $request->header('X-MANUAL-CALL');
+        if (!$isManual || $isManual !== 'true') {
+            return response()->json([
+                'error' => 'Este simulador requiere activación manual explícita',
+                'status' => 403,
+                'message' => 'Para activar, incluir header X-MANUAL-CALL: true'
+            ], 403);
+        }
+
         // Validar API key
         $apiKey = $request->header('X-API-KEY');
         $configApiKey = config('services.shipping_api.key');

@@ -45,6 +45,7 @@ class CheckUserRoleUseCase
 
             $isSeller = $user->isSeller();
             $isAdmin = $user->isAdmin();
+            $isPaymentUser = $user->isPaymentUser();
             $role = $user->getRole();
 
             // Obtener información adicional si es seller
@@ -68,6 +69,16 @@ class CheckUserRoleUseCase
                 ];
             }
 
+            // Obtener información adicional si es payment user
+            $paymentInfo = null;
+            if ($isPaymentUser && $user->paymentUser) {
+                $paymentInfo = [
+                    'id' => $user->paymentUser->id,
+                    'status' => $user->paymentUser->status,
+                    'permissions' => $user->paymentUser->permissions,
+                ];
+            }
+
             return [
                 'success' => true,
                 'status' => Response::HTTP_OK,
@@ -76,8 +87,10 @@ class CheckUserRoleUseCase
                     'role' => $role,
                     'is_seller' => $isSeller,
                     'is_admin' => $isAdmin,
+                    'is_payment_user' => $isPaymentUser,
                     'seller_info' => $sellerInfo,
                     'admin_info' => $adminInfo,
+                    'payment_info' => $paymentInfo,
                 ],
             ];
         } catch (\Exception $e) {

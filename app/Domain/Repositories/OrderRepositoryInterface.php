@@ -144,6 +144,11 @@ interface OrderRepositoryInterface
     public function updateShippingInfo(int $orderId, array $shippingInfo): bool;
 
     /**
+     * Update order status without affecting order items
+     */
+    public function updateStatus(int $orderId, string $status): bool;
+
+    /**
      * Get average order value for a seller
      *
      * @param  string  $dateFrom  Optional start date in Y-m-d format

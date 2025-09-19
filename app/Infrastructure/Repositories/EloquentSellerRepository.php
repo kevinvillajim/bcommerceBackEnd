@@ -11,6 +11,15 @@ use Illuminate\Support\Facades\DB;
 class EloquentSellerRepository implements SellerRepositoryInterface
 {
     /**
+     * HARDCODEAR: Método privado que siempre usa configuración global
+     * Evita cualquier uso accidental de comisión individual
+     */
+    private function getGlobalCommissionRate(): float
+    {
+        return app(\App\Services\ConfigurationService::class)
+            ->getConfig('platform.commission_rate', 10.0);
+    }
+    /**
      * Find a seller by ID
      */
     public function findById(int $id): ?SellerEntity
@@ -206,7 +215,7 @@ class EloquentSellerRepository implements SellerRepositoryInterface
             $seller->status,
             $seller->verification_level,
             // $seller->commission_rate, // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin
-            app(\App\Infrastructure\Services\ConfigurationService::class)->getConfig('platform.commission_rate', 10.0), // Usar configuración dinámica del admin
+            $this->getGlobalCommissionRate(), // HARDCODEAR: Usar método privado que siempre usa configuración global
             $seller->total_sales,
             $seller->is_featured,
             $seller->id,

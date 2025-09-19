@@ -534,8 +534,13 @@ class AdminInvoiceController extends Controller
         try {
             $invoice = Invoice::with(['order.items.product', 'order.user'])->find($id);
 
-            if (! $invoice) {
+            if (!$invoice) {
                 return response('Factura no encontrada', 404);
+            }
+
+            // Verificar que la factura esté autorizada por el SRI
+            if ($invoice->status !== Invoice::STATUS_AUTHORIZED) {
+                return response('Solo se pueden generar PDFs para facturas autorizadas por el SRI', 400);
             }
 
             // Si ya existe un PDF generado, devolverlo
@@ -550,20 +555,10 @@ class AdminInvoiceController extends Controller
                 ]);
             }
 
-            // Si no existe PDF o la factura no está autorizada, generar uno nuevo
-            if ($invoice->status !== Invoice::STATUS_AUTHORIZED) {
-                // Para facturas no autorizadas, generar PDF temporal sin datos SRI
-                Log::info('Generando PDF temporal para factura no autorizada', [
-                    'invoice_id' => $invoice->id,
-                    'status' => $invoice->status,
-                ]);
+            // Generar PDF usando el UseCase
+            $pdfPath = $this->generateInvoicePdfUseCase->execute($invoice);
 
-                $pdfPath = $this->generateTemporaryPdf($invoice);
-            } else {
-                // Para facturas autorizadas, usar el UseCase completo
-                $pdfPath = $this->generateInvoicePdfUseCase->execute($invoice);
-            }
-
+            // Obtener el contenido del PDF generado
             $pdfContent = Storage::disk('public')->get($pdfPath);
             $fileName = "factura_{$invoice->invoice_number}.pdf";
 
@@ -584,31 +579,6 @@ class AdminInvoiceController extends Controller
         }
     }
 
-    /**
-     * Genera un PDF temporal para facturas no autorizadas
-     */
-    private function generateTemporaryPdf(Invoice $invoice): string
-    {
-        $pdfData = [
-            'invoice' => $invoice,
-            'order' => $invoice->order,
-            'customer' => $invoice->order->user,
-            'items' => $invoice->order->items,
-            'sriResponse' => [],
-            'generatedAt' => now(),
-        ];
-
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('invoices.pdf-template', $pdfData);
-        $pdf->setPaper('A4', 'portrait');
-
-        $fileName = "temp_invoice_{$invoice->invoice_number}_{$invoice->id}.pdf";
-        $filePath = "invoices/temp/{$fileName}";
-
-        $pdfContent = $pdf->output();
-        Storage::disk('public')->put($filePath, $pdfContent);
-
-        return $filePath;
-    }
 
     /**
      * Obtiene los colores de estado para el frontend

@@ -11,6 +11,7 @@ use App\Domain\Repositories\SellerOrderRepositoryInterface;
 use App\Domain\Repositories\ShoppingCartRepositoryInterface;
 use App\Domain\Services\PricingCalculatorService;
 use App\Events\OrderCreated;
+use App\Models\User;
 use App\Services\ConfigurationService;
 use App\Services\PriceVerificationService;
 use App\UseCases\Cart\ApplyCartDiscountCodeUseCase;
@@ -221,7 +222,7 @@ class ProcessCheckoutUseCase
                     'shipping_data' => $shippingData,
                     'billing_data' => $billingData,
                     'seller_id' => $sellerId,
-                    'items' => $items, // ✅ CORREGIDO: Pasar los items reales, no array vacío
+                    'items' => $processedItems, // ✅ CORREGIDO: Pasar los items PROCESADOS con final_price, no los originales
                     // ✅ CORREGIDO: Información detallada de pricing
                     'subtotal_products' => $totals['subtotal_with_discounts'],
                     'iva_amount' => $totals['iva_amount'],
@@ -287,11 +288,18 @@ class ProcessCheckoutUseCase
                     throw new \Exception('SECURITY: Los datos de envío deben incluir nombre y apellido separados por espacio. Transacción bloqueada.');
                 }
 
+                // Obtener datos reales del usuario desde BD
+                $user = User::find($userId);
+                if (!$user) {
+                    throw new \Exception('SECURITY: Usuario no encontrado. Transacción bloqueada.');
+                }
+
                 $paymentDataWithCustomer = $paymentData;
                 $paymentDataWithCustomer['customer'] = [
+                    'id' => $userId, // ✅ ID real del usuario
                     'given_name' => $given_name,
                     'surname' => $surname,
-                    'email' => $shippingData['email'] ?? 'test@example.com', // Email puede tener fallback temporal
+                    'email' => $user->email, // ✅ Email real del usuario
                     'phone' => $shippingData['phone'], // ✅ ESTRICTO: Sin fallback
                     'doc_id' => $shippingData['identification'], // ✅ ESTRICTO: Sin fallback
                 ];

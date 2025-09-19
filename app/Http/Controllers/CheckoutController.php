@@ -56,13 +56,44 @@ class CheckoutController extends Controller
                     'items' => $items,
                 ]);
 
-                // ✅ TRANSFORMAR datos del cálculo centralizado al formato que espera DatafastController
-                $transformedData = array_merge($request->all(), [
+                // ✅ TRANSFORMAR datos para DatafastController - EXTRAER CÉDULA DE RUC
+                $shippingId = $validated['shippingAddress']['identification'] ?? '';
+                $billingId = $validated['billingAddress']['identification'] ?? '';
+
+                // ✅ CRÍTICO: Auto-extraer cédula desde RUC para Datafast
+                $extractCedulaFromRUC = function($identification) {
+                    $cleanId = preg_replace('/\D/', '', $identification);
+                    if (strlen($cleanId) === 13) {
+                        // Es RUC, extraer cédula (primeros 10 dígitos)
+                        return substr($cleanId, 0, 10);
+                    }
+                    return $cleanId; // Ya es cédula o ID válido
+                };
+
+                $transformedData = [
+                    'shippingAddress' => [
+                        'street' => $validated['shippingAddress']['street'],
+                        'city' => $validated['shippingAddress']['city'],
+                        'country' => $validated['shippingAddress']['country'],
+                        // ✅ NO enviar identification para evitar confusión
+                    ],
+                    'customer' => [
+                        'given_name' => $validated['shippingAddress']['name'] ?? 'Cliente',
+                        'surname' => 'Desde Checkout',
+                        'phone' => $validated['shippingAddress']['phone'] ?? '',
+                        'doc_id' => $extractCedulaFromRUC($shippingId), // ✅ CÉDULA EXTRAÍDA
+                    ],
                     'total' => $calculatedTotals['total'],
                     'subtotal' => $calculatedTotals['subtotal'],
                     'shipping_cost' => $calculatedTotals['shipping'],
                     'tax' => $calculatedTotals['tax'],
                     'items' => $items, // Usar items validados
+                ];
+
+                Log::info('🔍 CheckoutController: Extracción de cédula para Datafast', [
+                    'original_shipping_id' => $shippingId,
+                    'extracted_cedula' => $transformedData['customer']['doc_id'],
+                    'was_ruc' => strlen(preg_replace('/\D/', '', $shippingId)) === 13,
                 ]);
 
                 // Crear nuevo request con datos transformados

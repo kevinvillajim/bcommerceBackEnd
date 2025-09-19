@@ -184,7 +184,7 @@ class User extends Authenticatable implements CanResetPassword, JWTSubject, Must
      */
     public function isSeller(): bool
     {
-        return $this->seller()->exists();
+        return $this->seller()->where('status', 'active')->exists();
     }
 
     /**
@@ -200,11 +200,27 @@ class User extends Authenticatable implements CanResetPassword, JWTSubject, Must
     }
 
     /**
+     * Verificar si el usuario tiene rol de pagos (independiente)
+     */
+    public function isPaymentUser(): bool
+    {
+        return $this->paymentUser()->exists() && $this->paymentUser->status === 'active';
+    }
+
+    /**
      * Get the admin profile associated with the user
      */
     public function admin(): HasOne
     {
         return $this->hasOne(Admin::class);
+    }
+
+    /**
+     * Relación con PaymentUser - rol independiente
+     */
+    public function paymentUser(): HasOne
+    {
+        return $this->hasOne(PaymentUser::class);
     }
 
     /**
@@ -218,6 +234,10 @@ class User extends Authenticatable implements CanResetPassword, JWTSubject, Must
 
         if ($this->isSeller()) {
             return 'seller';
+        }
+
+        if ($this->isPaymentUser()) {
+            return 'payment';
         }
 
         return 'user';

@@ -240,32 +240,32 @@ class DatafastService implements PaymentGatewayInterface
             'customer.middleName' => $this->sanitizeString($customer['middle_name'] ?? 'De', 50),
             'customer.surname' => $this->sanitizeString($customer['surname'] ?? 'Prueba', 48),
             'customer.ip' => $this->getValidIp($customer['ip'] ?? request()->ip()),
-            'customer.merchantCustomerId' => $this->sanitizeString($customer['id'] ?? '1', 16),
+            'customer.merchantCustomerId' => $this->sanitizeString($customer['id'], 16),
             'merchantTransactionId' => $this->sanitizeString($orderData['transaction_id'] ?? ('TXN_'.time()), 255),
-            'customer.email' => $this->validateEmail($customer['email'] ?? 'test@example.com'),
+            'customer.email' => $this->validateEmail($customer['email'] ?? null),
             'customer.identificationDocType' => 'IDCARD',
-            'customer.identificationDocId' => $this->formatDocumentId($customer['doc_id'] ?? '1234567890'),
-            'customer.phone' => $this->formatPhone($customer['phone'] ?? '0999999999'),
+            'customer.identificationDocId' => $this->formatDocumentId($customer['doc_id'] ?? null),
+            'customer.phone' => $this->formatPhone($customer['phone'] ?? null),
 
             // Datos de envío y facturación - con longitudes validadas
             // ✅ CORREGIDO: Usar 'street' consistentemente con frontend, fallback a 'address' para retrocompatibilidad
             'shipping.street1' => $this->sanitizeString(
-                $orderData['shipping']['street'] ?? $orderData['shipping']['address'] ?? 'Dirección de prueba',
+                $this->validateAddress($orderData['shipping']['street'] ?? $orderData['shipping']['address'] ?? null),
                 100
             ),
             'shipping.country' => $this->formatCountryCode($orderData['shipping']['country'] ?? 'EC'),
             'billing.street1' => $this->sanitizeString(
-                $orderData['billing']['street'] ?? $orderData['billing']['address'] ?? 'Dirección de prueba',
+                $this->validateAddress($orderData['billing']['street'] ?? $orderData['billing']['address'] ?? null),
                 100
             ),
             'billing.country' => $this->formatCountryCode($orderData['billing']['country'] ?? 'EC'),
 
             // Modo de prueba (solo en ambiente de desarrollo, no en producción)
-            // 'testMode' => 'EXTERNAL', // Comentado para producción
+            'testMode' => 'EXTERNAL', // ✅ FASE 2 ACTIVADA - coincide con credenciales y .env
 
             // URL de resultado para redirección después del pago
-            // Usar el puerto correcto del frontend (3003 en tu caso)
-            'shopperResultUrl' => env('FRONTEND_URL', 'http://localhost:3003').'/datafast-result',
+            // ✅ CORREGIDO: Usar puerto 3000 como está en .env
+            'shopperResultUrl' => env('FRONTEND_URL', 'http://localhost:3000').'/datafast-result',
 
             // Parámetros personalizados - Impuestos (formato exacto)
             'customParameters[SHOPPER_VAL_BASE0]' => number_format($base0, 2, '.', ''),
@@ -373,26 +373,47 @@ class DatafastService implements PaymentGatewayInterface
     /**
      * Formatear ID de documento a 10 dígitos
      */
-    private function formatDocumentId(string $docId): string
+    private function formatDocumentId(?string $docId): string
     {
+        if (empty($docId)) {
+            throw new \Exception('Cédula del cliente es requerida - no se permiten datos falsos');
+        }
+
         // Remover todo lo que no sea dígito
         $docId = preg_replace('/\D/', '', $docId);
 
-        // Asegurar que tenga exactamente 10 dígitos
-        return str_pad(substr($docId, 0, 10), 10, '0', STR_PAD_LEFT);
+        // ✅ CORRECCIÓN: Auto-extraer cédula desde RUC si es necesario
+        if (strlen($docId) === 13) {
+            // Es RUC, extraer cédula (primeros 10 dígitos)
+            $extractedCedula = substr($docId, 0, 10);
+            \Log::info('🔧 DatafastService: Auto-extracción de cédula desde RUC', [
+                'ruc_original' => $docId,
+                'cedula_extraida' => $extractedCedula
+            ]);
+            return $extractedCedula;
+        }
+
+        if (strlen($docId) !== 10) {
+            throw new \Exception('Cédula del cliente debe tener exactamente 10 dígitos: ' . $docId);
+        }
+
+        return $docId;
     }
 
     /**
      * Formatear teléfono
      */
-    private function formatPhone(string $phone): string
+    private function formatPhone(?string $phone): string
     {
+        if (empty($phone)) {
+            throw new \Exception('Teléfono del cliente es requerido - no se permiten datos falsos');
+        }
+
         // Remover espacios y caracteres especiales, mantener solo números y +
         $phone = preg_replace('/[^\d+]/', '', $phone);
 
-        // Asegurar longitud entre 7 y 25 caracteres
         if (strlen($phone) < 7) {
-            return '0999999999'; // Teléfono por defecto
+            throw new \Exception('Teléfono del cliente inválido (muy corto): ' . $phone);
         }
 
         return substr($phone, 0, 25);
@@ -401,10 +422,14 @@ class DatafastService implements PaymentGatewayInterface
     /**
      * Validar email
      */
-    private function validateEmail(string $email): string
+    private function validateEmail(?string $email): string
     {
+        if (empty($email)) {
+            throw new \Exception('Email del cliente es requerido - no se permiten datos falsos');
+        }
+
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return 'test@example.com'; // Email por defecto
+            throw new \Exception('Email del cliente inválido: ' . $email);
         }
 
         return substr($email, 0, 128);
@@ -423,6 +448,18 @@ class DatafastService implements PaymentGatewayInterface
         }
 
         return 'EC'; // País por defecto
+    }
+
+    /**
+     * Validar dirección requerida
+     */
+    private function validateAddress(?string $address): string
+    {
+        if (empty($address)) {
+            throw new \Exception('Dirección del cliente es requerida - no se permiten datos falsos');
+        }
+
+        return trim($address);
     }
 
     /**

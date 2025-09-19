@@ -141,17 +141,15 @@ class AdminOrderController extends Controller
             $previousStatus = $order->getStatus();
             $newStatus = $request->input('status');
 
-            // Actualizar estado de la orden principal
-            $order->setStatus($newStatus);
+            // Use specific updateStatus method to avoid affecting order items
+            $updateResult = $this->orderRepository->updateStatus($order->getId(), $newStatus);
 
-            // Agregar timestamps según el estado
-            if ($newStatus === 'delivered') {
-                $order->delivered_at = now();
-            } elseif ($newStatus === 'completed') {
-                $order->completed_at = now();
+            if (!$updateResult) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al actualizar el estado de la orden',
+                ], 500);
             }
-
-            $this->orderRepository->save($order);
 
             // Si existe repositorio de SellerOrder y es una orden multi-vendedor
             if ($this->sellerOrderRepository && $order->hasMultipleSellers()) {
@@ -161,8 +159,7 @@ class AdminOrderController extends Controller
                 }
             }
 
-            // CORREGIDO: Solo disparar UN evento para la orden principal
-            event(new OrderStatusChanged($order->getId(), $previousStatus, $newStatus, 'main_order'));
+            // Note: OrderStatusChanged event is already dispatched in updateStatus method
 
             // Actualizar shipping status si es necesario
             if ($newStatus === 'shipped' || $newStatus === 'delivered') {

@@ -102,7 +102,7 @@ class ExternalPaymentController extends Controller
             $linkCode = ExternalPaymentLink::generateUniqueCode();
 
             // Calcular fecha de expiración (default 7 días)
-            $expiresInDays = $validated['expires_in_days'] ?? 7;
+            $expiresInDays = (int)($validated['expires_in_days'] ?? 7);
             $expiresAt = now()->addDays($expiresInDays);
 
             $link = ExternalPaymentLink::create([

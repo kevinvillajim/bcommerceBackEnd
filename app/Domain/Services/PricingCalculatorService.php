@@ -126,6 +126,7 @@ class PricingCalculatorService
                 'seller_discounted_price' => $pricing['seller_discounted_price'],
                 'volume_discount_percentage' => $pricing['volume_discount_percentage'],
                 'final_price' => $pricing['final_price'],
+                'price' => $pricing['final_price'], // ✅ CRUCIAL: Campo price con valor final para OrderItems
                 'seller_discount_amount' => $pricing['seller_discount_amount'],
                 'volume_discount_amount' => $pricing['volume_discount_amount'],
                 'total_discount_amount' => $pricing['total_discount_amount'],

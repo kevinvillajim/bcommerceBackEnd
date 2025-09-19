@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountingController;
 // Controller imports
 use App\Http\Controllers\Admin\AdminInvoiceController;
+use App\Http\Controllers\Admin\AdminCreditNoteController;
 use App\Http\Controllers\Admin\AdminLogController;
 use App\Http\Controllers\Admin\AdminOrderController;
 use App\Http\Controllers\Admin\AdminRatingController;
@@ -318,6 +319,38 @@ Route::middleware('jwt.auth')->group(function () {
         Route::get('/{id}/items-breakdown', [OrderItemBreakdownController::class, 'getOrderItemsBreakdown']);
         Route::post('/{id}/reorder', [OrderController::class, 'reorder']);
         Route::post('/{id}/confirm-reception', [OrderController::class, 'confirmReception']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Credit Notes - SRI API Routes (formato SRI exacto)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('credit-notes')->group(function () {
+        // Crear nueva nota de crédito (formato SRI exacto)
+        Route::post('/', [AdminCreditNoteController::class, 'store']);
+
+        // Listar notas de crédito del usuario con filtros SRI
+        Route::get('/', [AdminCreditNoteController::class, 'index']);
+
+        // Validar datos de nota de crédito sin procesarla
+        Route::post('/validate', [AdminCreditNoteController::class, 'validate']);
+
+        // Obtener estado de una nota de crédito específica
+        Route::get('/status/{claveAcceso}', [AdminCreditNoteController::class, 'getStatusByAccessKey']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice Routes for Credit Notes (datos reales para UX)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('invoices')->group(function () {
+        // Obtener facturas autorizadas disponibles para notas de crédito
+        Route::get('/authorized', [AdminCreditNoteController::class, 'getAuthorizedInvoicesReal']);
+
+        // Obtener detalles completos de una factura para nota de crédito
+        Route::get('/{id}/details', [AdminCreditNoteController::class, 'getInvoiceDetailsReal']);
     });
 
     /*
@@ -687,9 +720,7 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
     Route::put('users/{id}/block', [AdminUserController::class, 'block']);
     Route::put('users/{id}/unblock', [AdminUserController::class, 'unblock']);
     Route::post('users/{id}/reset-password', [AdminUserController::class, 'resetPassword']);
-    Route::put('users/{id}/make-admin', [AdminUserController::class, 'makeAdmin']);
-    Route::post('users/{id}/make-seller', [AdminUserController::class, 'makeSeller']);
-    Route::put('users/{id}/make-payment', [AdminUserController::class, 'makePaymentUser']);
+    Route::put('users/{id}/change-role', [AdminUserController::class, 'changeRole']);
     Route::delete('users/{id}', [AdminUserController::class, 'destroy']);
 
     /*
@@ -909,6 +940,46 @@ Route::middleware(['jwt.auth', 'admin'])->prefix('admin')->group(function () {
         Route::get('/{id}/download-pdf', [AdminInvoiceController::class, 'downloadPdf']);
         // Estadísticas de facturas para dashboard
         Route::get('/stats/overview', [AdminInvoiceController::class, 'stats']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Credit Note Management Routes (for admins) - SRI System
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('credit-notes')->group(function () {
+        // Lista paginada de notas de crédito con filtros
+        Route::get('/', [AdminCreditNoteController::class, 'index']);
+
+        // Obtener facturas autorizadas para crear notas de crédito
+        Route::get('/authorized-invoices', [AdminCreditNoteController::class, 'getAuthorizedInvoices']);
+
+        // Obtener datos completos de una factura para crear nota de crédito (SRI)
+        Route::get('/invoice-full-data/{invoiceId}', [AdminCreditNoteController::class, 'getInvoiceFullData']);
+
+        // Obtener detalles de una factura específica para crear nota de crédito
+        Route::get('/invoice-details/{invoiceId}', [AdminCreditNoteController::class, 'getInvoiceDetails']);
+
+        // Crear nueva nota de crédito desde factura
+        Route::post('/', [AdminCreditNoteController::class, 'store']);
+
+        // Detalles completos de una nota de crédito
+        Route::get('/{id}', [AdminCreditNoteController::class, 'show']);
+
+        // Actualizar datos de una nota de crédito
+        Route::put('/{id}', [AdminCreditNoteController::class, 'update']);
+
+        // Reintenta una nota de crédito fallida
+        Route::post('/{id}/retry', [AdminCreditNoteController::class, 'retry']);
+
+        // Consulta estado actual en SRI
+        Route::get('/{id}/check-status', [AdminCreditNoteController::class, 'checkStatus']);
+
+        // Descargar PDF de una nota de crédito
+        Route::get('/{id}/download-pdf', [AdminCreditNoteController::class, 'downloadPdf']);
+
+        // Estadísticas de notas de crédito para dashboard
+        Route::get('/stats/overview', [AdminCreditNoteController::class, 'stats']);
     });
 
     /*

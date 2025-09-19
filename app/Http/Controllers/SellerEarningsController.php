@@ -43,9 +43,38 @@ class SellerEarningsController extends Controller
 
             $sellerId = $seller->id;
 
-            // Parámetros de fecha (último mes por defecto)
-            $startDate = $request->input('start_date', now()->subMonth()->format('Y-m-d'));
-            $endDate = $request->input('end_date', now()->format('Y-m-d'));
+            // Parámetros de fecha - detectar si usuario envió filtros
+            $hasCustomDates = $request->has('start_date') && $request->has('end_date');
+
+            if ($hasCustomDates) {
+                // Usuario especificó filtros de fecha
+                $startDate = $request->input('start_date');
+                $endDate = $request->input('end_date');
+                $currentPeriodData = $this->calculatePeriodEarnings($sellerId, $startDate, $endDate);
+
+                // Calcular período anterior comparable (mismo número de días)
+                $startDateTime = \Carbon\Carbon::parse($startDate);
+                $endDateTime = \Carbon\Carbon::parse($endDate);
+                $daysDiff = $endDateTime->diffInDays($startDateTime);
+
+                $previousStartDate = $startDateTime->copy()->subDays($daysDiff + 1)->format('Y-m-d');
+                $previousEndDate = $startDateTime->copy()->subDay()->format('Y-m-d');
+                $previousPeriodData = $this->calculatePeriodEarnings($sellerId, $previousStartDate, $previousEndDate);
+
+                $periodLabel = "Período filtrado";
+            } else {
+                // Sin filtros - usar comportamiento actual (mes actual vs anterior)
+                $startDate = now()->startOfMonth()->format('Y-m-d');
+                $endDate = now()->endOfMonth()->format('Y-m-d');
+                $currentPeriodData = $this->calculatePeriodEarnings($sellerId, $startDate, $endDate);
+
+                // Mes anterior
+                $previousStartDate = now()->subMonth()->startOfMonth()->format('Y-m-d');
+                $previousEndDate = now()->subMonth()->endOfMonth()->format('Y-m-d');
+                $previousPeriodData = $this->calculatePeriodEarnings($sellerId, $previousStartDate, $previousEndDate);
+
+                $periodLabel = "Este mes";
+            }
 
             // Obtener configuración de comisión
             $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
@@ -53,32 +82,22 @@ class SellerEarningsController extends Controller
             // 1. TOTAL EARNINGS (histórico)
             $totalEarningsData = $this->calculateTotalEarnings($sellerId);
 
-            // 2. VENTAS ESTE MES
-            $currentMonthStart = now()->startOfMonth()->format('Y-m-d');
-            $currentMonthEnd = now()->endOfMonth()->format('Y-m-d');
-            $currentMonthData = $this->calculatePeriodEarnings($sellerId, $currentMonthStart, $currentMonthEnd);
-
-            // 3. VENTAS MES ANTERIOR (para calcular crecimiento)
-            $lastMonthStart = now()->subMonth()->startOfMonth()->format('Y-m-d');
-            $lastMonthEnd = now()->subMonth()->endOfMonth()->format('Y-m-d');
-            $lastMonthData = $this->calculatePeriodEarnings($sellerId, $lastMonthStart, $lastMonthEnd);
-
             // 4. CALCULAR CRECIMIENTO
             $salesGrowth = 0;
             $earningsGrowth = 0;
 
-            if ($lastMonthData['sales'] > 0) {
-                $salesGrowth = (($currentMonthData['sales'] - $lastMonthData['sales']) / $lastMonthData['sales']) * 100;
+            if ($previousPeriodData['sales'] > 0) {
+                $salesGrowth = (($currentPeriodData['sales'] - $previousPeriodData['sales']) / $previousPeriodData['sales']) * 100;
             }
 
-            if ($lastMonthData['net_earnings'] > 0) {
-                $earningsGrowth = (($currentMonthData['net_earnings'] - $lastMonthData['net_earnings']) / $lastMonthData['net_earnings']) * 100;
+            if ($previousPeriodData['net_earnings'] > 0) {
+                $earningsGrowth = (($currentPeriodData['net_earnings'] - $previousPeriodData['net_earnings']) / $previousPeriodData['net_earnings']) * 100;
             }
 
             // 5. PAGOS PENDIENTES (órdenes no pagadas)
             $pendingPayments = SellerOrder::where('seller_id', $sellerId)
                 ->where('payment_status', '!=', 'paid')
-                ->whereIn('status', ['completed', 'delivered'])
+                ->where('status', 'shipped')
                 ->sum('total');
 
             $pendingCommission = $pendingPayments * ($commissionRate / 100);
@@ -89,23 +108,21 @@ class SellerEarningsController extends Controller
                 'data' => [
                     'total_earnings' => round($totalEarningsData['total_net_earnings'], 2),
                     'pending_payments' => round($pendingNetEarnings, 2),
-                    'sales_this_month' => round($currentMonthData['sales'], 2),
+                    'sales_this_period' => round($currentPeriodData['sales'], 2),
                     'sales_growth' => round($salesGrowth, 2),
-                    'commissions_this_month' => round($currentMonthData['commissions'], 2),
+                    'commissions_this_period' => round($currentPeriodData['commissions'], 2),
                     'commissions_percentage' => $commissionRate,
-                    'net_earnings_this_month' => round($currentMonthData['net_earnings'], 2),
+                    'net_earnings_this_period' => round($currentPeriodData['net_earnings'], 2),
                     'earnings_growth' => round($earningsGrowth, 2),
                     'period' => [
+                        'label' => $periodLabel,
                         'start_date' => $startDate,
                         'end_date' => $endDate,
-                        'current_month' => [
-                            'start' => $currentMonthStart,
-                            'end' => $currentMonthEnd,
+                        'previous_period' => [
+                            'start' => $previousStartDate,
+                            'end' => $previousEndDate,
                         ],
-                        'last_month' => [
-                            'start' => $lastMonthStart,
-                            'end' => $lastMonthEnd,
-                        ]
+                        'has_custom_dates' => $hasCustomDates,
                     ]
                 ]
             ]);
@@ -141,27 +158,65 @@ class SellerEarningsController extends Controller
             }
 
             $sellerId = $seller->id;
-
-            // Obtener últimos 12 meses
-            $monthlyData = [];
             $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
 
-            for ($i = 11; $i >= 0; $i--) {
-                $date = now()->subMonths($i);
-                $monthStart = $date->startOfMonth()->format('Y-m-d');
-                $monthEnd = $date->endOfMonth()->format('Y-m-d');
+            // Detectar si hay filtros de fecha personalizados
+            $hasCustomDates = $request->has('start_date') && $request->has('end_date');
+            $monthlyData = [];
 
-                $periodData = $this->calculatePeriodEarnings($sellerId, $monthStart, $monthEnd);
+            if ($hasCustomDates) {
+                // Usuario especificó rango de fechas - generar datos mensuales para ese período
+                $startDate = \Carbon\Carbon::parse($request->input('start_date'));
+                $endDate = \Carbon\Carbon::parse($request->input('end_date'));
 
-                $monthlyData[] = [
-                    'month' => $date->format('M Y'),
-                    'month_short' => $date->format('M'),
-                    'year' => $date->format('Y'),
-                    'sales' => round($periodData['sales'], 2),
-                    'commissions' => round($periodData['commissions'], 2),
-                    'net' => round($periodData['net_earnings'], 2),
-                    'orders_count' => $periodData['orders_count']
-                ];
+                $currentDate = $startDate->copy()->startOfMonth();
+                $endMonth = $endDate->copy()->endOfMonth();
+
+                while ($currentDate <= $endMonth) {
+                    $monthStart = $currentDate->format('Y-m-d');
+                    $monthEnd = $currentDate->copy()->endOfMonth()->format('Y-m-d');
+
+                    // Ajustar fechas si el mes se sale del rango solicitado
+                    if ($currentDate->copy()->startOfMonth() < $startDate) {
+                        $monthStart = $startDate->format('Y-m-d');
+                    }
+                    if ($currentDate->copy()->endOfMonth() > $endDate) {
+                        $monthEnd = $endDate->format('Y-m-d');
+                    }
+
+                    $periodData = $this->calculatePeriodEarnings($sellerId, $monthStart, $monthEnd);
+
+                    $monthlyData[] = [
+                        'month' => $currentDate->format('M Y'),
+                        'month_short' => $currentDate->format('M'),
+                        'year' => $currentDate->format('Y'),
+                        'sales' => round($periodData['sales'], 2),
+                        'commissions' => round($periodData['commissions'], 2),
+                        'net' => round($periodData['net_earnings'], 2),
+                        'orders_count' => $periodData['orders_count']
+                    ];
+
+                    $currentDate->addMonth();
+                }
+            } else {
+                // Sin filtros - mostrar últimos 12 meses (comportamiento actual)
+                for ($i = 11; $i >= 0; $i--) {
+                    $date = now()->subMonths($i);
+                    $monthStart = $date->startOfMonth()->format('Y-m-d');
+                    $monthEnd = $date->endOfMonth()->format('Y-m-d');
+
+                    $periodData = $this->calculatePeriodEarnings($sellerId, $monthStart, $monthEnd);
+
+                    $monthlyData[] = [
+                        'month' => $date->format('M Y'),
+                        'month_short' => $date->format('M'),
+                        'year' => $date->format('Y'),
+                        'sales' => round($periodData['sales'], 2),
+                        'commissions' => round($periodData['commissions'], 2),
+                        'net' => round($periodData['net_earnings'], 2),
+                        'orders_count' => $periodData['orders_count']
+                    ];
+                }
             }
 
             return response()->json([
@@ -189,9 +244,9 @@ class SellerEarningsController extends Controller
     {
         $commissionRate = $this->configService->getConfig('platform.commission_rate', 10.0);
 
-        // Obtener total de ventas completadas/pagadas
+        // Obtener total de ventas completadas/entregadas
         $totalSales = SellerOrder::where('seller_id', $sellerId)
-            ->whereIn('status', ['completed', 'delivered', 'paid'])
+            ->where('status', 'shipped')
             ->sum('total');
 
         $totalCommissions = $totalSales * ($commissionRate / 100);
@@ -217,7 +272,7 @@ class SellerEarningsController extends Controller
 
         // Ventas del período
         $periodSales = SellerOrder::where('seller_id', $sellerId)
-            ->whereIn('status', ['completed', 'delivered', 'paid'])
+            ->where('status', 'shipped')
             ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
             ->sum('total');
 
@@ -226,7 +281,7 @@ class SellerEarningsController extends Controller
 
         // Contar órdenes del período
         $ordersCount = SellerOrder::where('seller_id', $sellerId)
-            ->whereIn('status', ['completed', 'delivered', 'paid'])
+            ->where('status', 'shipped')
             ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
             ->count();
 
@@ -247,9 +302,9 @@ class SellerEarningsController extends Controller
      */
     private function calculateTotalShippingEarnings(int $sellerId): float
     {
-        // Obtener todas las órdenes del seller completadas
+        // Obtener todas las órdenes del seller completadas/entregadas
         $sellerOrders = SellerOrder::where('seller_id', $sellerId)
-            ->whereIn('status', ['completed', 'delivered', 'paid'])
+            ->where('status', 'delivered')
             ->get();
 
         $totalShippingEarnings = 0;
@@ -268,7 +323,7 @@ class SellerEarningsController extends Controller
     private function calculatePeriodShippingEarnings(int $sellerId, string $startDate, string $endDate): float
     {
         $sellerOrders = SellerOrder::where('seller_id', $sellerId)
-            ->whereIn('status', ['completed', 'delivered', 'paid'])
+            ->where('status', 'delivered')
             ->whereBetween('created_at', [$startDate . ' 00:00:00', $endDate . ' 23:59:59'])
             ->get();
 

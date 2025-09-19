@@ -18,6 +18,9 @@ class GenerateInvoiceFromOrderUseCase
     {
         Log::info('Iniciando generación de factura para orden', ['order_id' => $order->id]);
 
+        // Cargar relación user para obtener email real
+        $order->load('user');
+
         try {
             return DB::transaction(function () use ($order) {
                 // ✅ Validación inicial: orden debe tener items

@@ -124,19 +124,20 @@ class DatafastController extends Controller
         try {
             $user = $request->user();
 
+
             // ✅ NUEVO: Validar datos incluyendo campos de CheckoutData temporal
             $validated = $request->validate([
                 'shippingAddress' => 'required|array',
                 'shippingAddress.street' => 'required|string|max:100', // street en lugar de address
                 'shippingAddress.city' => 'required|string|max:50',
                 'shippingAddress.country' => 'required|string|max:100', // max:100 en lugar de size:2 por compatibilidad
-                'shippingAddress.identification' => 'sometimes|string|max:13', // max:13 para RUC
+                // ✅ NO validar shippingAddress.identification - usar solo customer.doc_id
                 'customer' => 'required|array', // ✅ OBLIGATORIO PARA SRI
                 'customer.given_name' => 'sometimes|string|max:48',
                 'customer.middle_name' => 'sometimes|string|max:50',
                 'customer.surname' => 'sometimes|string|max:48',
                 'customer.phone' => 'sometimes|string|min:7|max:25',
-                'customer.doc_id' => 'required|string|size:10', // ✅ OBLIGATORIO PARA SRI
+                'customer.doc_id' => 'required|string|size:10|regex:/^\d{10}$/', // ✅ OBLIGATORIO: Solo 10 dígitos numéricos para SRI
                 'total' => 'required|numeric|min:0.01',
                 'subtotal' => 'sometimes|numeric|min:0',
                 'shipping_cost' => 'sometimes|numeric|min:0',
@@ -148,6 +149,7 @@ class DatafastController extends Controller
                 'session_id' => 'sometimes|string|max:100',
                 'validated_at' => 'sometimes|string',
             ]);
+
 
             // ✅ VALIDAR SI SE RECIBIÓ CHECKOUTDATA TEMPORAL
             $hasSessionId = isset($validated['session_id']) && ! empty($validated['session_id']);
@@ -240,19 +242,19 @@ class DatafastController extends Controller
                 'environment' => config('app.env') === 'production' ? 'production' : 'test',
                 'phase' => 'phase2',
 
-                // Información del cliente
+                // ✅ CRÍTICO: Validación estricta de customer.doc_id - SIN FALLBACKS HARDCODEADOS
                 'customer_given_name' => $validated['customer']['given_name'] ?? $user->name ?? 'Cliente',
-                'customer_middle_name' => $validated['customer']['middle_name'] ?? 'De',
+                'customer_middle_name' => $validated['customer']['middle_name'] ?? null,
                 'customer_surname' => $validated['customer']['surname'] ?? 'Prueba',
-                'customer_phone' => $validated['customer']['phone'] ?? '0999999999',
-                'customer_doc_id' => str_pad($validated['customer']['doc_id'] ?? '1234567890', 10, '0', STR_PAD_LEFT),
+                'customer_phone' => $validated['customer']['phone'] ?? $user->phone ?? null,
+                'customer_doc_id' => $validated['customer']['doc_id'], // ✅ SIN FALLBACK - Ya validado como requerido
                 'customer_email' => $user->email,
 
                 // ✅ CORREGIDO: Información de envío usando shippingAddress
                 'shipping_address' => $validated['shippingAddress']['street'], // street en lugar de address
                 'shipping_city' => $validated['shippingAddress']['city'],
                 'shipping_country' => strtoupper($validated['shippingAddress']['country']),
-                'shipping_identification' => $validated['shippingAddress']['identification'] ?? $validated['customer']['doc_id'] ?? null, // ✅ CÉDULA/RUC PARA ENVÍO
+                'shipping_identification' => $validated['customer']['doc_id'], // ✅ USAR SOLO customer.doc_id VALIDADO
 
                 // Información técnica
                 'client_ip' => $request->ip(),
@@ -280,11 +282,11 @@ class DatafastController extends Controller
                 'customer' => [
                     'id' => $user->id,
                     'given_name' => $validated['customer']['given_name'] ?? $user->name ?? 'Cliente',
-                    'middle_name' => $validated['customer']['middle_name'] ?? 'De',
+                    'middle_name' => $validated['customer']['middle_name'] ?? null,
                     'surname' => $validated['customer']['surname'] ?? 'Prueba',
                     'email' => $user->email,
-                    'phone' => $validated['customer']['phone'] ?? '0999999999',
-                    'doc_id' => str_pad($validated['customer']['doc_id'] ?? '1234567890', 10, '0', STR_PAD_LEFT),
+                    'phone' => $validated['customer']['phone'] ?? $user->phone ?? null,
+                    'doc_id' => $validated['customer']['doc_id'], // ✅ SIN FALLBACK - Ya validado como requerido y debe tener 10 dígitos
                     'ip' => $request->ip(),
                 ],
                 'shipping' => [
@@ -347,14 +349,14 @@ class DatafastController extends Controller
                     $productDescription = 'Descripción del producto';
 
                     try {
-                        $product = $this->productRepository->findById($item->getProductId());
+                        $product = $this->productRepository->findById($requestItem['product_id']);
                         if ($product) {
                             $productName = $product->getName();
                             $productDescription = $product->getDescription() ?: 'Descripción del producto';
                         }
                     } catch (\Exception $e) {
                         Log::warning('No se pudo obtener información del producto', [
-                            'product_id' => $item->getProductId(),
+                            'product_id' => $requestItem['product_id'],
                             'error' => $e->getMessage(),
                         ]);
                     }
@@ -825,9 +827,24 @@ class DatafastController extends Controller
                 'request_data' => $request->all(),
             ]);
 
+            // ✅ MANEJO ESPECÍFICO: Error de CheckoutData faltante
+            if (str_contains($e->getMessage(), 'CheckoutData no encontrado')) {
+                return response()->json([
+                    'success' => false,
+                    'status' => 'error',
+                    'message' => 'El pago fue procesado exitosamente pero la sesión de checkout ha expirado. Contacte a soporte con su número de transacción.',
+                    'error_code' => 'CHECKOUT_DATA_EXPIRED',
+                    'metadata' => [
+                        'result_code' => 'CHECKOUT_EXPIRED',
+                        'original_message' => 'Sesión de checkout expirada después de pago exitoso',
+                        'validation_type' => 'checkout_data_error'
+                    ]
+                ], 400); // 400 en lugar de 500 porque es un error de estado/tiempo
+            }
+
             return response()->json([
                 'success' => false,
-                'status' => 'error', // ✅ AÑADIDO: Consistencia con interfaces TypeScript
+                'status' => 'error',
                 'message' => 'Error al verificar el pago: '.$e->getMessage(),
                 'debug_error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\CreditNote;
 use Exception;
 
 class SriDataMapperService
@@ -259,6 +260,159 @@ class SriDataMapperService
             'email' => $invoice->customer_email,
             'address' => $invoice->customer_address,
             'phone' => $invoice->customer_phone,
+        ];
+    }
+
+    // ✅ =================== MÉTODOS PARA NOTAS DE CRÉDITO ===================
+
+    /**
+     * ✅ Construye el payload completo para enviar nota de crédito al API del SRI
+     */
+    public function buildCreditNoteSriPayload(CreditNote $creditNote): array
+    {
+        // ✅ Validar antes de mapear
+        $validationErrors = $this->validateCreditNoteForSri($creditNote);
+
+        if (!empty($validationErrors)) {
+            throw new Exception('Errores de validación para SRI: ' . implode(', ', $validationErrors));
+        }
+
+        // ✅ Obtener datos del cliente
+        $customerData = $this->extractCustomerFromCreditNote($creditNote);
+
+        // ✅ Mapear items de la nota de crédito
+        $creditNoteItems = $creditNote->items()->with('product')->get();
+        $detalles = [];
+
+        foreach ($creditNoteItems as $item) {
+            $detalles[] = [
+                'codigoInterno' => $item->product_code, // Código interno del producto
+                'codigoAdicional' => $item->product_code, // Código adicional (puede ser el mismo)
+                'descripcion' => $item->product_name,
+                'cantidad' => (float) $item->quantity,
+                'precioUnitario' => (float) $item->unit_price,
+                'descuento' => (float) $item->discount,
+                'codigoIva' => $item->codigo_iva, // 0, 2, 3, 4, 6, 7
+            ];
+        }
+
+        // ✅ Formato exacto según CreateCreditNoteRequest de la API SRI
+        return [
+            'secuencial' => str_pad($creditNote->credit_note_number, 9, '0', STR_PAD_LEFT), // 9 dígitos
+            'fechaEmision' => $creditNote->issue_date->format('Y-m-d'), // YYYY-MM-DD
+            'motivo' => $creditNote->motivo,
+            'documentoModificado' => [
+                'tipo' => $creditNote->documento_modificado_tipo, // "01" = Factura
+                'numero' => $creditNote->documento_modificado_numero, // 001-001-000000126
+                'fechaEmision' => $creditNote->documento_modificado_fecha->format('Y-m-d'),
+            ],
+            'comprador' => [
+                'tipoIdentificacion' => $customerData['identification_type'], // 05 o 04
+                'identificacion' => $customerData['identification'],
+                'razonSocial' => $customerData['name'],
+                'direccion' => $customerData['address'] ?? '',
+                'telefono' => $customerData['phone'] ?? '',
+                'email' => $customerData['email'] ?? '',
+            ],
+            'detalles' => $detalles,
+            'informacionAdicional' => (object) [
+                'MotivoDetallado' => $creditNote->motivo,
+                'DocumentoOriginal' => $creditNote->documento_modificado_numero,
+                'Email' => $customerData['email'] ?? '',
+            ],
+        ];
+    }
+
+    /**
+     * ✅ Valida que todos los campos requeridos estén presentes para nota de crédito
+     */
+    public function validateCreditNoteForSri(CreditNote $creditNote): array
+    {
+        $errors = [];
+
+        // ✅ Validaciones básicas
+        if (empty($creditNote->customer_identification)) {
+            $errors[] = 'Falta identificación del cliente';
+        }
+
+        if (empty($creditNote->customer_name)) {
+            $errors[] = 'Falta nombre del cliente';
+        }
+
+        if (empty($creditNote->customer_address)) {
+            $errors[] = 'Falta dirección del cliente';
+        }
+
+        if ($creditNote->subtotal <= 0) {
+            $errors[] = 'Subtotal debe ser mayor a 0';
+        }
+
+        if ($creditNote->total_amount <= 0) {
+            $errors[] = 'Total debe ser mayor a 0';
+        }
+
+        // ✅ Validaciones específicas de nota de crédito
+        if (empty($creditNote->motivo) || strlen($creditNote->motivo) < 5) {
+            $errors[] = 'El motivo debe tener al menos 5 caracteres';
+        }
+
+        if (empty($creditNote->documento_modificado_numero)) {
+            $errors[] = 'Falta número del documento modificado';
+        }
+
+        if (empty($creditNote->documento_modificado_fecha)) {
+            $errors[] = 'Falta fecha del documento modificado';
+        }
+
+        // ✅ Validar formato de identificación
+        $identification = $creditNote->customer_identification;
+        if (!preg_match('/^\d{10}(\d{3})?$/', $identification)) {
+            $errors[] = 'Formato de identificación inválido';
+        }
+
+        // ✅ Validar items
+        $items = $creditNote->items()->get();
+        if ($items->isEmpty()) {
+            $errors[] = 'La nota de crédito debe tener al menos un item';
+        }
+
+        foreach ($items as $index => $item) {
+            if ($item->quantity <= 0) {
+                $errors[] = "Item #{$index}: cantidad debe ser mayor a 0";
+            }
+
+            if ($item->unit_price <= 0) {
+                $errors[] = "Item #{$index}: precio unitario debe ser mayor a 0";
+            }
+
+            if (empty($item->product_code)) {
+                $errors[] = "Item #{$index}: falta código de producto";
+            }
+
+            if (empty($item->product_name)) {
+                $errors[] = "Item #{$index}: falta nombre de producto";
+            }
+
+            if (!in_array($item->codigo_iva, ['0', '2', '3', '4', '6', '7'])) {
+                $errors[] = "Item #{$index}: código de IVA inválido";
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * ✅ Extrae datos del cliente desde la nota de crédito
+     */
+    private function extractCustomerFromCreditNote(CreditNote $creditNote): array
+    {
+        return [
+            'identification' => $creditNote->customer_identification,
+            'identification_type' => $creditNote->customer_identification_type, // Ya detecta 05/04
+            'name' => $creditNote->customer_name,
+            'email' => $creditNote->customer_email,
+            'address' => $creditNote->customer_address,
+            'phone' => $creditNote->customer_phone,
         ];
     }
 }

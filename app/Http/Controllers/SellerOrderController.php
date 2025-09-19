@@ -724,9 +724,19 @@ class SellerOrderController extends Controller
         }
 
         try {
+            Log::info('🔄 INICIO updateShipping', [
+                'seller_id' => $sellerId,
+                'order_id' => $id,
+                'request_data' => $request->all()
+            ]);
+
             $sellerOrder = $this->sellerOrderRepository->findById($id);
 
             if (! $sellerOrder) {
+                Log::warning('❌ Orden no encontrada', [
+                    'seller_id' => $sellerId,
+                    'order_id' => $id
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Orden no encontrada',
@@ -735,26 +745,52 @@ class SellerOrderController extends Controller
 
             // Verificar que la orden pertenezca al vendedor
             if ($sellerOrder->getSellerId() != $sellerId) {
+                Log::warning('❌ Acceso denegado a orden', [
+                    'seller_id' => $sellerId,
+                    'order_id' => $id,
+                    'order_seller_id' => $sellerOrder->getSellerId()
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'No tiene permiso para modificar esta orden',
                 ], 403);
             }
 
+            Log::info('✅ Orden encontrada y verificada', [
+                'seller_order_id' => $sellerOrder->getId(),
+                'order_id' => $sellerOrder->getOrderId(),
+                'current_status' => $sellerOrder->getStatus()
+            ]);
+
             // ✅ NUEVO: Si solo se actualiza el status, usar el método updateStatus
             if ($request->has('status') && ! $request->hasAny(['tracking_number', 'shipping_company', 'estimated_delivery', 'notes'])) {
                 $previousStatus = $sellerOrder->getStatus();
                 $newStatus = $request->input('status');
 
+                Log::info('🔄 ACTUALIZANDO SOLO STATUS', [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $newStatus,
+                    'seller_order_id' => $sellerOrder->getId()
+                ]);
+
                 // Actualizar el estado en SellerOrder
                 $updated = $this->sellerOrderRepository->updateStatus($id, $newStatus);
 
                 if (! $updated) {
+                    Log::error('❌ Error al actualizar estado de SellerOrder', [
+                        'seller_order_id' => $id,
+                        'new_status' => $newStatus
+                    ]);
                     return response()->json([
                         'success' => false,
                         'message' => 'Error al actualizar el estado de la orden',
                     ], 500);
                 }
+
+                Log::info('✅ Estado de SellerOrder actualizado', [
+                    'seller_order_id' => $id,
+                    'status' => $newStatus
+                ]);
 
                 // Actualizar el estado en la orden principal (Order)
                 $order = $this->orderRepository->findById($sellerOrder->getOrderId());
@@ -791,6 +827,12 @@ class SellerOrderController extends Controller
             // ✅ FLUJO ORIGINAL: Actualizar información completa de envío
             $shippingInfo = $request->only(['tracking_number', 'shipping_company', 'estimated_delivery', 'notes']);
 
+            Log::info('🔄 ACTUALIZANDO INFORMACIÓN DE ENVÍO', [
+                'shipping_info' => $shippingInfo,
+                'seller_order_id' => $sellerOrder->getId(),
+                'current_status' => $sellerOrder->getStatus()
+            ]);
+
             // Convertir fecha estimada de entrega
             if (isset($shippingInfo['estimated_delivery']) && ! empty($shippingInfo['estimated_delivery'])) {
                 $shippingInfo['estimated_delivery'] = new \DateTime($shippingInfo['estimated_delivery']);
@@ -798,23 +840,45 @@ class SellerOrderController extends Controller
                 $shippingInfo['estimated_delivery'] = now()->addDays(5);
             }
 
+            Log::info('📅 Fecha de entrega procesada', [
+                'estimated_delivery' => $shippingInfo['estimated_delivery']->format('Y-m-d H:i:s')
+            ]);
+
             // Actualizar la información de envío en SellerOrder
             $updated = $this->sellerOrderRepository->updateShippingInfo($id, $shippingInfo);
 
             if (! $updated) {
+                Log::error('❌ Error al actualizar información de envío en SellerOrder', [
+                    'seller_order_id' => $id,
+                    'shipping_info' => $shippingInfo
+                ]);
                 return response()->json([
                     'success' => false,
                     'message' => 'Error al actualizar la información de envío',
                 ], 500);
             }
 
+            Log::info('✅ Información de envío actualizada en SellerOrder', [
+                'seller_order_id' => $id
+            ]);
+
             // Buscar o crear el registro de envío correspondiente
             $order_id = $sellerOrder->getOrderId();
             $shipping = Shipping::where('order_id', $order_id)->first();
             $isNew = false;
 
+            Log::info('🔍 BUSCANDO/CREANDO REGISTRO DE SHIPPING', [
+                'order_id' => $order_id,
+                'shipping_found' => $shipping ? true : false,
+                'shipping_id' => $shipping ? $shipping->id : null,
+                'shipping_status' => $shipping ? $shipping->status : null
+            ]);
+
             if (! $shipping) {
                 $isNew = true;
+                Log::info('🆕 Creando nuevo registro de envío', [
+                    'order_id' => $order_id
+                ]);
                 // Crear un nuevo envío
                 $shipping = new Shipping;
                 $shipping->order_id = $order_id;
@@ -825,6 +889,11 @@ class SellerOrderController extends Controller
                     'address' => 'Centro de distribución principal',
                 ];
                 $shipping->last_updated = now();
+            } else {
+                Log::info('📦 Utilizando registro de envío existente', [
+                    'shipping_id' => $shipping->id,
+                    'current_status' => $shipping->status
+                ]);
             }
 
             // Actualizar los datos del envío solo si se proporcionaron
@@ -860,11 +929,26 @@ class SellerOrderController extends Controller
             // Si se estableció un tracking number, actualizar el estado de la orden a "shipped" si corresponde
             if (isset($shippingInfo['tracking_number']) && ! empty($shippingInfo['tracking_number']) && $sellerOrder->getStatus() === 'processing') {
                 $previousStatus = $sellerOrder->getStatus();
+
+                Log::info('🚀 CAMBIANDO ESTADO A SHIPPED (por tracking number)', [
+                    'seller_order_id' => $id,
+                    'previous_status' => $previousStatus,
+                    'tracking_number' => $shippingInfo['tracking_number']
+                ]);
+
                 $this->sellerOrderRepository->updateStatus($id, 'shipped');
 
                 // Cambiar el estado del envío a "shipped"
+                $previousShippingStatus = $shipping->status;
                 $shipping->status = 'shipped';
                 $shipping->save();
+
+                Log::info('✅ Estados actualizados a shipped', [
+                    'seller_order_id' => $id,
+                    'shipping_id' => $shipping->id,
+                    'previous_shipping_status' => $previousShippingStatus,
+                    'new_shipping_status' => 'shipped'
+                ]);
 
                 // Registrar evento de envío
                 $shipping->addHistoryEvent(
@@ -879,7 +963,7 @@ class SellerOrderController extends Controller
                 // Disparar evento para el envío
                 event(new ShippingStatusUpdated(
                     $shipping->id,
-                    'processing',
+                    $previousShippingStatus,
                     'shipped'
                 ));
             }
@@ -888,12 +972,30 @@ class SellerOrderController extends Controller
             $order = $this->orderRepository->findById($sellerOrder->getOrderId());
             if ($order && $order->getStatus() === 'processing' && isset($shippingInfo['tracking_number']) && ! empty($shippingInfo['tracking_number'])) {
                 $orderPreviousStatus = $order->getStatus();
+
+                Log::info('🔄 ACTUALIZANDO ORDEN PRINCIPAL', [
+                    'main_order_id' => $order->getId(),
+                    'previous_status' => $orderPreviousStatus,
+                    'new_status' => 'shipped'
+                ]);
+
                 $order->setStatus('shipped');
                 $this->orderRepository->save($order);
+
+                Log::info('✅ Orden principal actualizada', [
+                    'main_order_id' => $order->getId(),
+                    'status' => 'shipped'
+                ]);
 
                 // Disparar evento para la orden principal
                 event(new OrderStatusChanged($order->getId(), $orderPreviousStatus, 'shipped',
                     'main_order'));
+            } else {
+                Log::info('⏭️ No se actualizó la orden principal', [
+                    'main_order_found' => $order ? true : false,
+                    'main_order_status' => $order ? $order->getStatus() : null,
+                    'has_tracking' => isset($shippingInfo['tracking_number']) && !empty($shippingInfo['tracking_number'])
+                ]);
             }
 
             return response()->json([

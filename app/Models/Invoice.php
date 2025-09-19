@@ -42,11 +42,19 @@ class Invoice extends Model
         'retry_count',            // Contador (máx 9)
         'last_retry_at',          // Timestamp último reintento
         'created_via',            // checkout, manual
+
+        // Sistema de PDF automático
+        'pdf_path',               // Ruta del PDF generado
+        'pdf_generated_at',       // Timestamp de generación del PDF
+
+        // Sistema de emails automático
+        'email_sent_at',          // Timestamp de envío de email (protección anti-duplicados)
     ];
 
     protected $casts = [
         'issue_date' => 'datetime',
         'last_retry_at' => 'datetime',
+        'pdf_generated_at' => 'datetime',
         'subtotal' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',

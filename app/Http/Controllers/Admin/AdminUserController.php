@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Domain\Repositories\UserRepositoryInterface;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Models\PaymentUser;
 use App\Models\Seller;
 use App\Models\User;
 use App\Services\Mail\MailManager;
@@ -51,6 +52,7 @@ class AdminUserController extends Controller
                     $userData['last_login_at'] = $userModel->last_login_at ?? null;
                     $userData['is_seller'] = $userModel->isSeller();
                     $userData['is_admin'] = $userModel->isAdmin();
+                    $userData['is_payment_user'] = $userModel->isPaymentUser();
                     $userData['is_blocked'] = $userModel->isBlocked();
                 }
 
@@ -104,6 +106,7 @@ class AdminUserController extends Controller
                 $userData['last_login_at'] = $user->last_login_at ?? null;
                 $userData['is_seller'] = $user->isSeller();
                 $userData['is_admin'] = $user->isAdmin();
+                $userData['is_payment_user'] = $user->isPaymentUser();
                 $userData['is_blocked'] = $user->isBlocked();
                 $userData['strikes_count'] = $user->getStrikeCount();
             }
@@ -267,132 +270,19 @@ class AdminUserController extends Controller
         }
     }
 
-    /**
-     * Convertir usuario en administrador
-     */
-    public function makeAdmin(int $id): JsonResponse
-    {
-        try {
-            $user = User::find($id);
-
-            if (! $user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Usuario no encontrado',
-                ], 404);
-            }
-
-            // Verificar si ya es administrador
-            if ($user->isAdmin()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El usuario ya es administrador',
-                ], 400);
-            }
-
-            // Crear registro de admin para el usuario - CORREGIDO: Usar valor válido de la enumeración
-            if (! $user->admin()->exists()) {
-                $user->admin()->create([
-                    'role' => 'customer_support', // Valor corregido según la enumeración
-                    'permissions' => json_encode(['users', 'products', 'orders']),
-                    'status' => 'active',
-                ]);
-            } else {
-                // Activar el rol de admin si existe pero está inactivo
-                $user->admin()->update([
-                    'status' => 'active',
-                ]);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Usuario convertido en administrador correctamente',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error al convertir usuario en administrador: '.$e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al convertir usuario en administrador',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
 
     /**
-     * Convertir usuario en vendedor
+     * Cambiar rol de usuario de manera centralizada
      */
-    public function makeSeller(int $id, Request $request): JsonResponse
+    public function changeRole(int $id, Request $request): JsonResponse
     {
         try {
             $request->validate([
-                'store_name' => 'required|string|min:3|max:100|unique:sellers,store_name',
+                'role' => 'required|string|in:customer,seller,admin,payment',
+                'store_name' => 'nullable|string|min:3|max:100|unique:sellers,store_name,' . $id . ',user_id',
                 'description' => 'nullable|string|max:500',
             ]);
 
-            $user = User::find($id);
-
-            if (! $user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Usuario no encontrado',
-                ], 404);
-            }
-
-            // Verificar si ya es vendedor
-            if ($user->isSeller()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El usuario ya es vendedor',
-                ], 400);
-            }
-
-            // Crear registro de vendedor para el usuario
-            $seller = new Seller;
-            $seller->user_id = $id;
-            $seller->store_name = $request->store_name;
-            $seller->description = $request->description ?? '';
-            $seller->status = 'active'; // El admin lo crea como activo directamente
-            $seller->verification_level = 'basic';
-            // $seller->commission_rate = 10.00; // TODO: Implementar comisiones individuales en el futuro - usar configuración global del admin (se obtiene dinámicamente)
-            $seller->total_sales = 0;
-            $seller->is_featured = false;
-            $seller->save();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Usuario convertido en vendedor correctamente',
-                'data' => $seller,
-            ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors(),
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('Error al convertir usuario en vendedor: '.$e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'user_id' => $id,
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al convertir usuario en vendedor',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Convertir usuario en usuario de pagos
-     */
-    public function makePaymentUser(int $id): JsonResponse
-    {
-        try {
             $user = User::find($id);
 
             if (!$user) {
@@ -402,55 +292,135 @@ class AdminUserController extends Controller
                 ], 404);
             }
 
-            // Verificar si ya es administrador con rol payment
-            if ($user->isAdmin()) {
-                $admin = $user->admin;
-                if ($admin->role === 'payment') {
+            $newRole = $request->role;
+            $currentRoles = [
+                'admin' => $user->isAdmin(),
+                'seller' => $user->isSeller(),
+                'payment' => $user->isPaymentUser(),
+            ];
+
+            // Verificación de seguridad: no eliminar el último admin
+            if ($currentRoles['admin'] && $newRole !== 'admin') {
+                $adminCount = User::whereHas('admin', function ($query) {
+                    $query->where('status', 'active');
+                })->count();
+
+                if ($adminCount <= 1) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'El usuario ya tiene rol de pagos',
+                        'message' => 'No se puede quitar el rol de administrador al último administrador del sistema',
                     ], 400);
                 }
+            }
 
-                // Si ya es admin pero con otro rol, actualizar a payment
-                $admin->update([
-                    'role' => 'payment',
-                    'permissions' => json_encode(['external_payments']),
-                    'status' => 'active',
+            DB::beginTransaction();
+
+            try {
+                // Desactivar roles actuales
+                if ($currentRoles['admin']) {
+                    $user->admin()->update(['status' => 'inactive']);
+                }
+                if ($currentRoles['seller']) {
+                    $user->seller()->update(['status' => 'inactive']);
+                }
+                if ($currentRoles['payment']) {
+                    $user->paymentUser()->update(['status' => 'inactive']);
+                }
+
+                // Activar o crear el nuevo rol
+                switch ($newRole) {
+                    case 'admin':
+                        if (!$user->admin()->exists()) {
+                            $user->admin()->create([
+                                'role' => 'customer_support',
+                                'permissions' => json_encode(['users', 'products', 'orders']),
+                                'status' => 'active',
+                            ]);
+                        } else {
+                            $user->admin()->update(['status' => 'active']);
+                        }
+                        break;
+
+                    case 'seller':
+                        if (!$user->seller()->exists()) {
+                            if (!$request->store_name) {
+                                throw new \Exception('El nombre de la tienda es requerido para convertir en vendedor');
+                            }
+
+                            $user->seller()->create([
+                                'store_name' => $request->store_name,
+                                'description' => $request->description ?? '',
+                                'status' => 'active',
+                                'verification_level' => 'basic',
+                                'total_sales' => 0,
+                                'is_featured' => false,
+                            ]);
+                        } else {
+                            $user->seller()->update(['status' => 'active']);
+                        }
+                        break;
+
+                    case 'payment':
+                        if (!$user->paymentUser()->exists()) {
+                            $user->paymentUser()->create([
+                                'status' => 'active',
+                                'permissions' => ['external_payments'],
+                            ]);
+                        } else {
+                            $user->paymentUser()->update(['status' => 'active']);
+                        }
+                        break;
+
+                    case 'customer':
+                        // Solo desactivar roles, no crear nada nuevo
+                        break;
+
+                    default:
+                        throw new \Exception('Rol no válido');
+                }
+
+                DB::commit();
+
+                Log::info('Rol de usuario cambiado por administrador', [
+                    'user_id' => $id,
+                    'user_email' => $user->email,
+                    'new_role' => $newRole,
+                    'previous_roles' => $currentRoles,
+                    'admin_user_id' => auth()->id(),
                 ]);
+
+                $roleMessages = [
+                    'customer' => 'Usuario convertido a cliente correctamente',
+                    'seller' => 'Usuario convertido a vendedor correctamente',
+                    'admin' => 'Usuario convertido a administrador correctamente',
+                    'payment' => 'Usuario convertido a usuario de pagos correctamente',
+                ];
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'Usuario actualizado a rol de pagos correctamente',
+                    'message' => $roleMessages[$newRole],
                 ]);
+
+            } catch (\Exception $e) {
+                DB::rollback();
+                throw $e;
             }
 
-            // Crear registro de admin con rol payment para el usuario
-            $user->admin()->create([
-                'role' => 'payment',
-                'permissions' => json_encode(['external_payments']),
-                'status' => 'active',
-            ]);
-
-            Log::info('Usuario convertido a rol payment por administrador', [
-                'payment_user_id' => $id,
-                'payment_user_email' => $user->email,
-                'admin_user_id' => auth()->id(),
-            ]);
-
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
-                'success' => true,
-                'message' => 'Usuario convertido a rol de pagos correctamente',
-            ]);
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
-            Log::error('Error al convertir usuario a rol de pagos: ' . $e->getMessage(), [
+            Log::error('Error al cambiar rol de usuario: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'user_id' => $id,
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al convertir usuario a rol de pagos',
+                'message' => 'Error al cambiar rol de usuario',
                 'error' => $e->getMessage(),
             ], 500);
         }

@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Events\CreditNoteApproved;
 use App\Events\InvoiceApproved;
 use App\Models\Invoice;
+use App\Models\CreditNote;
 use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -219,8 +221,8 @@ class SriApiService
                 'sri_invoice_id' => $invoiceData['facturaId'] ?? null,
             ]);
 
-            // ✅ Disparar evento si la factura fue aprobada por el SRI
-            if (in_array($newStatus, [Invoice::STATUS_AUTHORIZED])) {
+            // ✅ Disparar evento si la factura fue aprobada Y no se ha procesado antes
+            if (in_array($newStatus, [Invoice::STATUS_AUTHORIZED]) && empty($invoice->pdf_path)) {
                 Log::info('Factura aprobada por SRI, disparando evento InvoiceApproved', [
                     'invoice_id' => $invoice->id,
                     'status' => $newStatus,
@@ -519,8 +521,8 @@ class SriApiService
                     'updated_fields' => array_keys($updateData),
                 ]);
 
-                // Si la factura fue autorizada, disparar evento
-                if (in_array($newStatus, [Invoice::STATUS_AUTHORIZED])) {
+                // Si la factura fue autorizada Y no se ha procesado antes, disparar evento
+                if (in_array($newStatus, [Invoice::STATUS_AUTHORIZED]) && empty($invoice->pdf_path)) {
                     Log::info('Factura autorizada durante retry, disparando evento', [
                         'invoice_id' => $invoice->id,
                         'status' => $newStatus,
@@ -572,5 +574,396 @@ class SriApiService
 
         // Fallback: usar el mensaje HTTP con el body completo
         return "Error HTTP {$response->status()}: ".$response->body();
+    }
+
+    // ✅ =================== MÉTODOS PARA NOTAS DE CRÉDITO ===================
+
+    /**
+     * ✅ Envía una nota de crédito al SRI y retorna la respuesta
+     */
+    public function sendCreditNote(CreditNote $creditNote): array
+    {
+        Log::info('Enviando nota de crédito al SRI', [
+            'credit_note_id' => $creditNote->id,
+            'credit_note_number' => $creditNote->credit_note_number,
+            'api_url' => $this->apiUrl,
+        ]);
+
+        try {
+            // ✅ Autenticar y obtener token JWT
+            $token = $this->authenticate();
+
+            // ✅ Preparar payload usando el mapper
+            $mapper = new SriDataMapperService;
+            $payload = $mapper->buildCreditNoteSriPayload($creditNote);
+
+            // ✅ Realizar petición HTTP al API del SRI con JWT
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$token,
+                'Content-Type' => 'application/json',
+                'Accept' => 'application/json',
+            ])
+                ->timeout($this->timeout)
+                ->post($this->apiUrl.'/api/credit-notes', $payload);
+
+            // ✅ Verificar respuesta HTTP
+            if (!$response->successful()) {
+                $errorMessage = $this->extractSriErrorMessage($response);
+                throw new Exception($errorMessage);
+            }
+
+            $responseData = $response->json();
+
+            Log::info('Respuesta del SRI para nota de crédito recibida', [
+                'credit_note_id' => $creditNote->id,
+                'status_code' => $response->status(),
+                'response' => $responseData,
+            ]);
+
+            // ✅ Procesar respuesta según el estado
+            $this->processCreditNoteApiResponse($creditNote, $responseData);
+
+            return $responseData;
+
+        } catch (Exception $e) {
+            Log::error('Error enviando nota de crédito al SRI', [
+                'credit_note_id' => $creditNote->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // ✅ Marcar nota de crédito como fallida
+            $creditNote->markAsFailed($e->getMessage());
+
+            throw $e;
+        }
+    }
+
+    /**
+     * ✅ Procesa la respuesta del API para notas de crédito y actualiza el estado
+     */
+    private function processCreditNoteApiResponse(CreditNote $creditNote, array $response): void
+    {
+        // ✅ Estructura real según CreditNoteCreationResponse:
+        // {
+        //   "success": true,
+        //   "message": "Nota de crédito procesada: AUTORIZADO",
+        //   "data": {
+        //     "notaCreditoId": 123,
+        //     "claveAcceso": "1709202504179320414400110010010000000016171157517",
+        //     "numeroNotaCredito": "000000001",
+        //     "estado": "AUTORIZADO",
+        //     "fechaEmision": "2025-01-15",
+        //     "total": 100.80,
+        //     "motivo": "Devolución de mercadería...",
+        //     "documentoModificado": "001-001-000000126",
+        //     "numeroAutorizacion": "1709202504179320414400110010010000000016171157517",
+        //     "fechaAutorizacion": "2025-01-15T22:56:15.000Z"
+        //   }
+        // }
+
+        if (!isset($response['success'])) {
+            throw new Exception('Respuesta del SRI inválida: falta campo success');
+        }
+
+        if ($response['success'] === true && isset($response['data'])) {
+            $creditNoteData = $response['data'];
+
+            // ✅ Nota de crédito creada exitosamente en la API SRI
+            $claveAcceso = $creditNoteData['claveAcceso'] ?? '';
+            $estado = $creditNoteData['estado'] ?? 'PENDIENTE';
+
+            if (empty($claveAcceso)) {
+                throw new Exception('Respuesta del SRI inválida: falta claveAcceso');
+            }
+
+            // ✅ Mapear estados de API SRI a estados BCommerce (idénticos a facturas)
+            $newStatus = match ($estado) {
+                'PENDIENTE' => CreditNote::STATUS_PENDING,
+                'PROCESANDO' => CreditNote::STATUS_PROCESSING,
+                'RECIBIDA' => CreditNote::STATUS_RECEIVED,
+                'AUTORIZADO' => CreditNote::STATUS_AUTHORIZED,
+                'RECHAZADO' => CreditNote::STATUS_REJECTED,
+                'NO_AUTORIZADO' => CreditNote::STATUS_NOT_AUTHORIZED,
+                'DEVUELTA' => CreditNote::STATUS_RETURNED,
+                'ERROR', 'ERROR_SRI' => CreditNote::STATUS_SRI_ERROR,
+                default => CreditNote::STATUS_PENDING
+            };
+
+            // ✅ Procesar información adicional del SRI (si está disponible)
+            $sriInfo = $creditNoteData['sri'] ?? null;
+            $authNumber = $creditNoteData['numeroAutorizacion'] ?? null;
+
+            // ✅ Actualizar nota de crédito con datos del SRI
+            $creditNote->update([
+                'status' => $newStatus,
+                'sri_access_key' => $claveAcceso,
+                'sri_authorization_number' => $authNumber,
+                'sri_response' => json_encode([
+                    'response' => $response,
+                    'sri_info' => $sriInfo,
+                    'processed_at' => now()->toISOString(),
+                ]),
+            ]);
+
+            Log::info('Nota de crédito procesada por la API SRI', [
+                'credit_note_id' => $creditNote->id,
+                'clave_acceso' => $claveAcceso,
+                'estado_sri' => $estado,
+                'estado_bcommerce' => $newStatus,
+                'sri_credit_note_id' => $creditNoteData['notaCreditoId'] ?? null,
+            ]);
+
+            // ✅ Disparar evento si la nota fue aprobada por el SRI
+            if (in_array($newStatus, [CreditNote::STATUS_AUTHORIZED])) {
+                Log::info('Nota de crédito aprobada por SRI', [
+                    'credit_note_id' => $creditNote->id,
+                    'status' => $newStatus,
+                ]);
+
+                // Disparar evento para generar PDF y enviar email automáticamente
+                event(new CreditNoteApproved($creditNote, $response));
+            }
+
+        } else {
+            // ✅ Nota de crédito rechazada o con errores
+            $errorMessage = $response['message'] ?? 'Error desconocido del SRI';
+            $creditNote->markAsFailed($errorMessage);
+
+            Log::warning('Nota de crédito rechazada por la API SRI', [
+                'credit_note_id' => $creditNote->id,
+                'error_message' => $errorMessage,
+                'response' => $response,
+            ]);
+
+            throw new Exception("Nota de crédito rechazada por la API SRI: {$errorMessage}");
+        }
+    }
+
+    /**
+     * ✅ Consulta el estado de una nota de crédito en el SRI usando su clave de acceso
+     */
+    public function checkCreditNoteStatus(string $claveAcceso): array
+    {
+        Log::info('Consultando estado de nota de crédito en SRI', [
+            'clave_acceso' => $claveAcceso,
+        ]);
+
+        try {
+            $token = $this->authenticate();
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$token,
+                'Accept' => 'application/json',
+            ])
+                ->timeout($this->timeout)
+                ->get($this->apiUrl.'/api/credit-notes/status/'.$claveAcceso);
+
+            if (!$response->successful()) {
+                throw new Exception(
+                    "Error HTTP {$response->status()} consultando estado: ".$response->body()
+                );
+            }
+
+            $responseData = $response->json();
+
+            Log::info('Estado de nota de crédito consultado', [
+                'clave_acceso' => $claveAcceso,
+                'response' => $responseData,
+            ]);
+
+            return $responseData;
+
+        } catch (Exception $e) {
+            Log::error('Error consultando estado de nota de crédito', [
+                'clave_acceso' => $claveAcceso,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * ✅ Reintenta el envío de una nota de crédito existente al SRI
+     */
+    public function retrySendCreditNote(CreditNote $creditNote): array
+    {
+        Log::info('Sistema inteligente de retry para nota de crédito SRI', [
+            'credit_note_id' => $creditNote->id,
+            'credit_note_number' => $creditNote->credit_note_number,
+            'has_sri_access_key' => !empty($creditNote->sri_access_key),
+            'current_status' => $creditNote->status,
+            'current_retry_count' => $creditNote->retry_count,
+        ]);
+
+        try {
+            // ✅ Autenticar y obtener token JWT
+            $token = $this->authenticate();
+
+            // ✅ Si la nota ya tiene clave de acceso, consultar estado actual
+            if ($creditNote->sri_access_key) {
+                Log::info('CASO A: Nota de crédito ya enviada previamente - consultando estado actual', [
+                    'credit_note_id' => $creditNote->id,
+                    'sri_access_key' => $creditNote->sri_access_key,
+                ]);
+
+                $statusResponse = $this->checkCreditNoteStatus($creditNote->sri_access_key);
+
+                // Procesar respuesta de consulta de estado
+                $this->processCreditNoteStatusResponse($creditNote, $statusResponse);
+
+                return $statusResponse;
+            }
+
+            // ✅ CASO B: Nota sin sri_access_key - puede estar en estado intermedio
+            Log::info('Nota de crédito sin sri_access_key - verificando si está en estado intermedio', [
+                'credit_note_id' => $creditNote->id,
+                'credit_note_number' => $creditNote->credit_note_number,
+                'status' => $creditNote->status,
+                'strategy' => 'Usar sendCreditNote() que maneja estados intermedios inteligentemente',
+            ]);
+
+            // ✅ Usar sendCreditNote() que ahora tiene lógica de estados inteligente
+            return $this->sendCreditNote($creditNote);
+
+        } catch (Exception $e) {
+            Log::error('Error en sistema inteligente de retry para nota de crédito', [
+                'credit_note_id' => $creditNote->id,
+                'has_sri_access_key' => !empty($creditNote->sri_access_key),
+                'retry_count' => $creditNote->retry_count,
+                'error' => $e->getMessage(),
+            ]);
+
+            // ✅ Marcar como fallida usando método existente
+            $creditNote->markAsFailed($e->getMessage());
+
+            throw $e;
+        }
+    }
+
+    /**
+     * ✅ Reintenta el envío de una nota de crédito (para el sistema de retry)
+     */
+    public function retryCreditNote(CreditNote $creditNote): array
+    {
+        Log::info('Reintentando envío de nota de crédito al SRI', [
+            'credit_note_id' => $creditNote->id,
+            'current_retry_count' => $creditNote->retry_count,
+        ]);
+
+        // ✅ Verificar que la nota puede reintentarse
+        if (!$creditNote->canRetry()) {
+            throw new Exception("La nota de crédito {$creditNote->id} no puede reintentarse (max reintentos alcanzado o estado incorrecto)");
+        }
+
+        // ✅ Incrementar contador de reintentos ANTES del intento
+        $creditNote->incrementRetryCount();
+
+        try {
+            // ✅ Actualizar estado a "enviando"
+            $creditNote->update(['status' => CreditNote::STATUS_SENT_TO_SRI]);
+
+            // ✅ Intentar envío usando método específico para retry
+            $response = $this->retrySendCreditNote($creditNote);
+
+            Log::info('Reintento de nota de crédito exitoso', [
+                'credit_note_id' => $creditNote->id,
+                'retry_count' => $creditNote->retry_count,
+            ]);
+
+            return $response;
+
+        } catch (Exception $e) {
+            Log::error('Fallo en reintento de nota de crédito', [
+                'credit_note_id' => $creditNote->id,
+                'retry_count' => $creditNote->retry_count,
+                'error' => $e->getMessage(),
+            ]);
+
+            // ✅ Si alcanzó el máximo de reintentos, marcar como definitivamente fallida
+            if (!$creditNote->canRetry()) {
+                $creditNote->markAsDefinitivelyFailed();
+
+                Log::critical('Nota de crédito marcada como definitivamente fallida', [
+                    'credit_note_id' => $creditNote->id,
+                    'final_retry_count' => $creditNote->retry_count,
+                ]);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * ✅ Procesa respuesta de consulta de estado SRI para notas de crédito
+     */
+    private function processCreditNoteStatusResponse(CreditNote $creditNote, array $response): void
+    {
+        // Lógica para procesar consulta de estado y actualizar nota si es necesario
+        if (isset($response['estado'])) {
+            $estado = $response['estado'];
+
+            $newStatus = match ($estado) {
+                'AUTORIZADO' => CreditNote::STATUS_AUTHORIZED,
+                'RECHAZADO' => CreditNote::STATUS_REJECTED,
+                'PENDIENTE' => CreditNote::STATUS_PENDING,
+                'PROCESANDO' => CreditNote::STATUS_PROCESSING,
+                'RECIBIDA' => CreditNote::STATUS_RECEIVED,
+                'NO_AUTORIZADO' => CreditNote::STATUS_NOT_AUTHORIZED,
+                'DEVUELTA' => CreditNote::STATUS_RETURNED,
+                'ERROR', 'ERROR_SRI' => CreditNote::STATUS_SRI_ERROR,
+                default => $creditNote->status // Mantener estado actual si no cambia
+            };
+
+            if ($newStatus !== $creditNote->status) {
+                $updateData = ['status' => $newStatus];
+
+                // Si tiene información adicional del SRI, actualizarla también
+                if (isset($response['numeroAutorizacion'])) {
+                    $updateData['sri_authorization_number'] = $response['numeroAutorizacion'];
+                }
+
+                if (isset($response['fechaAutorizacion'])) {
+                    $updateData['sri_response'] = json_encode([
+                        'response' => $response,
+                        'updated_at' => now()->toISOString(),
+                        'source' => 'status_check_retry',
+                    ]);
+                }
+
+                $creditNote->update($updateData);
+
+                Log::info('Estado de nota de crédito actualizado desde consulta SRI', [
+                    'credit_note_id' => $creditNote->id,
+                    'old_status' => $creditNote->status,
+                    'new_status' => $newStatus,
+                    'sri_estado' => $estado,
+                    'updated_fields' => array_keys($updateData),
+                ]);
+
+                // Si la nota fue autorizada, disparar evento (si existe)
+                if (in_array($newStatus, [CreditNote::STATUS_AUTHORIZED])) {
+                    Log::info('Nota de crédito autorizada durante retry', [
+                        'credit_note_id' => $creditNote->id,
+                        'status' => $newStatus,
+                    ]);
+
+                    // Disparar evento para generar PDF y enviar email automáticamente
+                    event(new CreditNoteApproved($creditNote, $response));
+                }
+            } else {
+                Log::info('Estado de nota de crédito sin cambios después de consulta SRI', [
+                    'credit_note_id' => $creditNote->id,
+                    'current_status' => $creditNote->status,
+                    'sri_estado' => $estado,
+                ]);
+            }
+        } else {
+            Log::warning('Respuesta de consulta SRI sin campo estado para nota de crédito', [
+                'credit_note_id' => $creditNote->id,
+                'response' => $response,
+            ]);
+        }
     }
 }

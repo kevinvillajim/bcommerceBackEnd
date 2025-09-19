@@ -233,6 +233,16 @@ class Seller extends Model
     }
 
     /**
+     * HARDCODEAR: Siempre usar configuración global de admin para comisión
+     * Ignora completamente cualquier valor individual que pueda existir en BD
+     */
+    public function getCommissionRateAttribute()
+    {
+        return app(\App\Services\ConfigurationService::class)
+            ->getConfig('platform.commission_rate', 10.0);
+    }
+
+    /**
      * Scope a query to order sellers by trustworthiness score
      */
     public function scopeOrderByTrustworthiness($query, $direction = 'desc')

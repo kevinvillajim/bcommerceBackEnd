@@ -30,6 +30,12 @@ class ExternalPaymentLink extends Model
         'updated_at' => 'datetime',
     ];
 
+    protected $appends = [
+        'public_url',
+        'is_expired',
+        'is_available',
+    ];
+
     /**
      * Relación con el usuario que creó el link
      */
@@ -94,6 +100,30 @@ class ExternalPaymentLink extends Model
     public function getPublicUrl(): string
     {
         return config('app.frontend_url') . '/pay/' . $this->link_code;
+    }
+
+    /**
+     * Accessor for public_url attribute
+     */
+    public function getPublicUrlAttribute(): string
+    {
+        return $this->getPublicUrl();
+    }
+
+    /**
+     * Accessor for is_expired attribute
+     */
+    public function getIsExpiredAttribute(): bool
+    {
+        return $this->isExpired();
+    }
+
+    /**
+     * Accessor for is_available attribute
+     */
+    public function getIsAvailableAttribute(): bool
+    {
+        return $this->isAvailableForPayment();
     }
 
     /**

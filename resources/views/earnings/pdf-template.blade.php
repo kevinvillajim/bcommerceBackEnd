@@ -415,8 +415,8 @@
                 </div>
                 <div class="metric-card">
                     <div class="metric-card-content">
-                        <div class="metric-value">${{ number_format($earningsData['sales_this_month'], 2) }}</div>
-                        <div class="metric-label">Ventas Este Mes</div>
+                        <div class="metric-value">${{ number_format($earningsData['sales_this_period'], 2) }}</div>
+                        <div class="metric-label">Ventas Este Período</div>
                         @if($earningsData['sales_growth'] != 0)
                             <div class="metric-growth {{ $earningsData['sales_growth'] > 0 ? 'growth-positive' : 'growth-negative' }}">
                                 {{ $earningsData['sales_growth'] > 0 ? '+' : '' }}{{ number_format($earningsData['sales_growth'], 1) }}%
@@ -426,15 +426,15 @@
                 </div>
                 <div class="metric-card">
                     <div class="metric-card-content">
-                        <div class="metric-value">${{ number_format($earningsData['commissions_this_month'], 2) }}</div>
-                        <div class="metric-label">Comisiones Este Mes</div>
+                        <div class="metric-value">${{ number_format($earningsData['commissions_this_period'], 2) }}</div>
+                        <div class="metric-label">Comisiones Este Período</div>
                         <div class="metric-growth">{{ number_format($commissionRate, 1) }}% comisión</div>
                     </div>
                 </div>
                 <div class="metric-card">
                     <div class="metric-card-content">
-                        <div class="metric-value">${{ number_format($earningsData['net_earnings_this_month'], 2) }}</div>
-                        <div class="metric-label">Neto Este Mes</div>
+                        <div class="metric-value">${{ number_format($earningsData['net_earnings_this_period'], 2) }}</div>
+                        <div class="metric-label">Neto Este Período</div>
                         @if($earningsData['earnings_growth'] != 0)
                             <div class="metric-growth {{ $earningsData['earnings_growth'] > 0 ? 'growth-positive' : 'growth-negative' }}">
                                 {{ $earningsData['earnings_growth'] > 0 ? '+' : '' }}{{ number_format($earningsData['earnings_growth'], 1) }}%
